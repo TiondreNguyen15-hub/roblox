@@ -1,0 +1,835 @@
+-- ALL-IN-ONE ROBLOX ESP + CAMERA LOCK INSTALLER
+-- Run in Roblox Studio's Command Bar in EDIT mode, in a project you own/are authorized to modify.
+-- This does not run in the desktop Lua 5.3 sandbox or in a Roblox game executor.
+-- Q: snap lock; T: smooth target lock; X: release; Right Shift: menu.
+local REPLACE_EXISTING = false -- Set true only to replace the tracker folders; old copies are backed up.
+assert(game ~= nil, "This file installs Roblox components. Use your authorized Roblox Studio Command Bar in Edit mode; the desktop Lua sandbox has no Roblox APIs.")
+local RunService = game:GetService("RunService")
+assert(RunService:IsStudio() and not RunService:IsRunning(), "Run this installer in Roblox Studio EDIT mode, not Play mode or the desktop Lua sandbox")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
+local StarterPlayer = game:GetService("StarterPlayer")
+local ServerStorage = game:GetService("ServerStorage")
+local StarterPlayerScripts = StarterPlayer:FindFirstChildOfClass("StarterPlayerScripts")
+assert(StarterPlayerScripts, "StarterPlayerScripts is unavailable")
+local destinations = {
+ shared = {parent=ReplicatedStorage,name="PlayerTracking"},
+ server = {parent=ServerScriptService,name="PlayerTrackingServer"},
+ client = {parent=StarterPlayerScripts,name="PlayerTrackingClient"},
+}
+for _, entry in pairs(destinations) do
+ local existing=entry.parent:FindFirstChild(entry.name)
+ assert(not existing or REPLACE_EXISTING, "Existing "..entry.name.." found. Preserve your Config viewer IDs, then set REPLACE_EXISTING=true to replace it with a backup.")
+ if existing then assert(existing:IsA("Folder"), "Expected tracker Folder, refusing to replace another instance type") end
+end
+local sources = {
+{folder="shared",name="Config",class="ModuleScript",source=[=[
+-- Server-owned settings. Add production viewers explicitly; Studio is allowed.
+return {
+	AllowAllViewers = false,
+	AllowedUserIds = {}, -- Example: {12345678, 87654321}
+	SnapshotHz = 10,
+	StreamSkeleton = true,
+	MaxTrackedPlayers = 0, -- 0 streams all connected characters; set a cap if needed.
+	RenderHz = 30,
+	MaxRenderedPlayers = 32,
+	MaxDistance = 1500, -- studs
+	InterpolationDelay = 0.15,
+	StaleAfter = 2,
+	RadarRange = 300,
+	RadarSize = 180,
+	MenuKey = Enum.KeyCode.RightShift,
+	SnapLockKey = Enum.KeyCode.Q,
+	TargetLockKey = Enum.KeyCode.T,
+	ReleaseLockKey = Enum.KeyCode.X,
+	LockRadiusPixels = 150,
+	LockMaxDistance = 1500,
+	LockSmoothing = 14,
+	LockTeamCheck = true,
+	LockRequireLineOfSight = true,
+	Colors = {
+		Box = Color3.fromRGB(39, 136, 255),
+		Text = Color3.fromRGB(235, 244, 255),
+		Skeleton = Color3.fromRGB(112, 255, 208),
+		Radar = Color3.fromRGB(39, 136, 255),
+		Wall = Color3.fromRGB(39, 136, 255),
+	},
+	Defaults = {
+		Enabled = true, Boxes = true, Names = true, Distance = true,
+		Health = true, Team = true, Skeleton = true, Radar = true, WallHighlights = true,
+		UseTeamColors = true, ShowTeammates = true,
+	},
+}
+]=]},
+{folder="shared",name="Rig",class="ModuleScript",source=[=[
+local Rig = {}
+Rig.Links = {
+	R15 = {
+		{"Head", "UpperTorso"}, {"UpperTorso", "LowerTorso"},
+		{"UpperTorso", "LeftUpperArm"}, {"LeftUpperArm", "LeftLowerArm"}, {"LeftLowerArm", "LeftHand"},
+		{"UpperTorso", "RightUpperArm"}, {"RightUpperArm", "RightLowerArm"}, {"RightLowerArm", "RightHand"},
+		{"LowerTorso", "LeftUpperLeg"}, {"LeftUpperLeg", "LeftLowerLeg"}, {"LeftLowerLeg", "LeftFoot"},
+		{"LowerTorso", "RightUpperLeg"}, {"RightUpperLeg", "RightLowerLeg"}, {"RightLowerLeg", "RightFoot"},
+	},
+	R6 = {
+		{"Head", "Torso"}, {"Torso", "Left Arm"}, {"Torso", "Right Arm"},
+		{"Torso", "Left Leg"}, {"Torso", "Right Leg"},
+	},
+}
+function Rig.Sample(character, rigType)
+	local joints = {}
+	for _, link in ipairs(Rig.Links[rigType] or {}) do
+		for _, name in ipairs(link) do
+			if not joints[name] then
+				local part = character:FindFirstChild(name)
+				if part and part:IsA("BasePart") then joints[name] = part.Position end
+			end
+		end
+	end
+	return joints
+end
+return Rig
+]=]},
+{folder="server",name="ExportConfig",class="ModuleScript",source=[=[
+-- Server only. Never put a publisher credential in ReplicatedStorage or a LocalScript.
+return {
+	Enabled = false, -- Enable after deploying the HTTPS relay and setting its secret.
+	RelayUrl = "", -- Example: https://player-data.example.com
+	SecretName = "PLAYER_DATA_PUBLISH_TOKEN", -- Creator Hub secret, restricted to your relay domain.
+	PublishHz = 2, -- One batched HTTP request per server tick, not per player.
+	MaxViewers = 10,
+}
+]=]},
+{folder="server",name="HttpBridge",class="ModuleScript",source=[=[
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Config = require(script.Parent.ExportConfig)
+local Bridge = {}
+local latest, cameras = nil, {}
+local gameName = nil
+local shared = ReplicatedStorage:WaitForChild("PlayerTracking")
+local remote = Instance.new("RemoteEvent")
+remote.Name = "DesktopBridge"
+remote.Parent = shared
+local function vector(v) return {v.X,v.Y,v.Z} end
+local function frame(cf) return {cf:GetComponents()} end
+local function authorized(player) return player:GetAttribute("PlayerTrackingAllowed") == true end
+remote.OnServerEvent:Connect(function(player, cf, viewport, fov)
+	if not Config.Enabled or not authorized(player) then return end
+	local old = cameras[player.UserId]
+	if old and os.clock()-old.time < 0.15 then return end
+	if typeof(cf) ~= "CFrame" or typeof(viewport) ~= "Vector2" or typeof(fov) ~= "number" then return end
+	if viewport.X ~= viewport.X or viewport.Y ~= viewport.Y then return end
+	if fov ~= fov or fov < 1 or fov > 120 or viewport.X < 1 or viewport.Y < 1 or viewport.X > 8192 or viewport.Y > 8192 then return end
+	for _, value in ipairs(frame(cf)) do if value ~= value or math.abs(value)>1e8 then return end end
+	cameras[player.UserId] = {time=os.clock(),camera={cframe=frame(cf),viewport={viewport.X,viewport.Y},fov=fov}}
+end)
+Players.PlayerRemoving:Connect(function(player) cameras[player.UserId]=nil end)
+function Bridge.Push(packet) latest=packet end
+if Config.Enabled then
+	task.spawn(function() local ok, info=pcall(function() return game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId) end);if ok and type(info.Name)=="string" then gameName=info.Name end end)
+	assert(Config.RelayUrl:match("^https://"), "Player Data relay must use public HTTPS")
+	task.spawn(function()
+		local delay = 1/math.clamp(Config.PublishHz,1,3)
+		local failed = false
+		while true do
+			task.wait(delay)
+			local packet = latest
+			if not packet then continue end
+			local viewers, present = {}, {}
+			for _, entity in ipairs(packet.entities) do present[entity.id]=true end
+			for _, player in ipairs(Players:GetPlayers()) do
+				local camera = cameras[player.UserId]
+				if authorized(player) and present[player.UserId] and camera and os.clock()-camera.time<2 and #viewers<Config.MaxViewers then
+					table.insert(viewers,{userId=player.UserId,camera=camera.camera})
+				end
+			end
+			if #viewers == 0 then continue end
+			local entities = {}
+			for _, entity in ipairs(packet.entities) do
+				local joints={}
+				for name,position in pairs(entity.joints) do joints[name]=vector(position) end
+				local cf=frame(entity.root)
+				table.insert(entities,{userId=entity.id,username=entity.username,displayName=entity.name,
+					position=vector(entity.root.Position),rotation={table.unpack(cf,4,12)},
+					box=frame(entity.root*entity.boxOffset),size=vector(entity.size),health=math.max(0,entity.health),maxHealth=math.max(1,entity.maxHealth),
+					teamId=entity.teamId,rig=entity.rig,joints=joints})
+			end
+			local ok,response=pcall(function()
+				return HttpService:RequestAsync({Url=Config.RelayUrl.."/v1/publish",Method="POST",
+					Headers={["Content-Type"]="application/json",Authorization=HttpService:GetSecret(Config.SecretName):AddPrefix("Bearer ")},
+					Body=HttpService:JSONEncode({version=1,sequence=packet.sequence,game={universeId=game.GameId,placeId=game.PlaceId,jobId=game.JobId,name=gameName},
+						connectedCount=#Players:GetPlayers(),players=entities,viewers=viewers})})
+			end)
+			if ok and response.Success then
+				local decodedOk,data=pcall(function() return HttpService:JSONDecode(response.Body) end)
+				if decodedOk and type(data.pairCodes)=="table" then
+					for _, player in ipairs(Players:GetPlayers()) do
+						local code=data.pairCodes[tostring(player.UserId)]
+						if authorized(player) and type(code)=="string" then remote:FireClient(player,code) end
+					end
+				end
+				failed=false;delay=1/math.clamp(Config.PublishHz,1,3)
+			else
+				if not failed then warn("Player Data relay unavailable. Check relay URL, HTTP settings and Creator Hub secret; retrying.") end
+				failed=true;delay=math.min(15,delay*2)
+			end
+		end
+	end)
+end
+return Bridge
+]=]},
+{folder="server",name="Tracking",class="Script",source=[=[
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local shared = ReplicatedStorage:WaitForChild("PlayerTracking")
+local Config = require(shared:WaitForChild("Config"))
+local Rig = require(shared:WaitForChild("Rig"))
+local HttpBridge = require(script.Parent.HttpBridge)
+local snapshot = Instance.new("RemoteEvent")
+snapshot.Name = "Snapshot"
+snapshot.Parent = shared
+
+local function allowed(player)
+	if RunService:IsStudio() or Config.AllowAllViewers then return true end
+	if game.CreatorType == Enum.CreatorType.User and player.UserId == game.CreatorId then return true end
+	return table.find(Config.AllowedUserIds, player.UserId) ~= nil
+end
+
+local sequence = 0
+local spawnSequence = 0
+local characters = {}
+Players.PlayerRemoving:Connect(function(player) characters[player.UserId] = nil end)
+local accumulator = 0
+RunService.Heartbeat:Connect(function(dt)
+	accumulator += dt
+	if accumulator < 1 / math.clamp(Config.SnapshotHz, 1, 30) then return end
+	accumulator = 0
+	local viewers = {}
+	for _, player in ipairs(Players:GetPlayers()) do
+		local authorized = allowed(player)
+		player:SetAttribute("PlayerTrackingAllowed", authorized)
+		if authorized then table.insert(viewers, player) end
+	end
+	if #viewers == 0 then return end
+	local entities = {}
+	for _, player in ipairs(Players:GetPlayers()) do
+		if Config.MaxTrackedPlayers > 0 and #entities >= Config.MaxTrackedPlayers then break end
+		local character = player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if humanoid and root and root:IsA("BasePart") then
+			if not characters[player.UserId] or characters[player.UserId].character ~= character then
+				spawnSequence += 1
+				characters[player.UserId] = {character = character, generation = spawnSequence}
+			end
+			local box, size = character:GetBoundingBox()
+			local rigType = humanoid.RigType.Name
+			table.insert(entities, {
+				id = player.UserId, generation = characters[player.UserId].generation,
+				name = player.DisplayName, username = player.Name,
+				root = root.CFrame, boxOffset = root.CFrame:ToObjectSpace(box), size = size,
+				health = humanoid.Health, maxHealth = humanoid.MaxHealth,
+				team = player.Team and player.Team.Name or "Neutral",
+				teamId = not player.Neutral and player.Team and tostring(player.Team:GetAttribute("TeamId") or player.Team.Name) or "Neutral",
+				teamColor = player.TeamColor.Color, neutral = player.Neutral,
+				rig = rigType,
+				joints = Config.StreamSkeleton and Rig.Sample(character, rigType) or {},
+			})
+		end
+	end
+	sequence += 1
+	local packet = {sequence = sequence, time = Workspace:GetServerTimeNow(), entities = entities}
+	HttpBridge.Push(packet)
+	for _, viewer in ipairs(viewers) do snapshot:FireClient(viewer, packet) end
+end)
+]=]},
+{folder="client",name="CameraLock",class="ModuleScript",source=[=[
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local CameraLock = {}
+CameraLock.__index = CameraLock
+function CameraLock.new(player, store, settings, config)
+	local self = setmetatable({player=player,store=store,settings=settings,config=config,target=nil,mode=nil,status="Camera lock: OFF"}, CameraLock)
+	self.binding = "AuthorizedCameraLock_" .. player.UserId
+	self.input = UserInputService.InputBegan:Connect(function(input, processed)
+		if processed or UserInputService:GetFocusedTextBox() then return end
+		if input.KeyCode == config.SnapLockKey then self:Toggle("snap") end
+		if input.KeyCode == config.TargetLockKey then self:Toggle("smooth") end
+		if input.KeyCode == config.ReleaseLockKey then self:Release("Released") end
+	end)
+	RunService:BindToRenderStep(self.binding, Enum.RenderPriority.Camera.Value + 1, function(dt) self:Step(dt) end)
+	return self
+end
+function CameraLock:Release(reason)
+	self.target=nil;self.mode=nil;self.status="Camera lock: OFF" .. (reason and " · "..reason or "")
+end
+function CameraLock:Ready()
+	if self.player:GetAttribute("PlayerTrackingAllowed") ~= true or not self.settings.Enabled then return false end
+	local humanoid = self.player.Character and self.player.Character:FindFirstChildOfClass("Humanoid")
+	local camera = Workspace.CurrentCamera
+	return humanoid ~= nil and humanoid.Health > 0 and camera ~= nil and camera.CameraType == Enum.CameraType.Custom
+end
+function CameraLock:Eligible(entity, camera)
+	if entity.id == self.player.UserId or entity.health <= 0 then return false end
+	if self.config.LockTeamCheck and not self.player.Neutral and not entity.neutral and self.player.Team and self.player.Team.Name == entity.team then return false end
+	return (entity.root.Position-camera.CFrame.Position).Magnitude <= math.min(self.settings.MaxDistance,self.config.LockMaxDistance)
+end
+function CameraLock:Point(entity) return entity.joints.Head or entity.root.Position end
+function CameraLock:Visible(entity, camera)
+	if not self.config.LockRequireLineOfSight then return true end
+	local targetPlayer = Players:GetPlayerByUserId(entity.id)
+	local character = targetPlayer and targetPlayer.Character
+	if not character then return false end
+	local parameters = RaycastParams.new()
+	parameters.FilterType = Enum.RaycastFilterType.Exclude
+	parameters.FilterDescendantsInstances = self.player.Character and {self.player.Character} or {}
+	local result = Workspace:Raycast(camera.CFrame.Position, self:Point(entity)-camera.CFrame.Position, parameters)
+	return result == nil or result.Instance:IsDescendantOf(character)
+end
+function CameraLock:Toggle(mode)
+	if self.mode == mode and self.target then self:Release("Released"); return end
+	if not self:Ready() then self:Release("Authorization, live character, and Custom camera required"); return end
+	local camera = Workspace.CurrentCamera
+	local center = camera.ViewportSize/2
+	local best, score = nil, self.config.LockRadiusPixels
+	for _, entity in ipairs(self.store:Get(Workspace:GetServerTimeNow())) do
+		if self:Eligible(entity,camera) and self:Visible(entity,camera) then
+			local point, onScreen = camera:WorldToViewportPoint(self:Point(entity))
+			if onScreen and point.Z > 0.1 then
+				local distance = (Vector2.new(point.X,point.Y)-center).Magnitude
+				if distance < score then best=entity;score=distance end
+			end
+		end
+	end
+	if not best then self:Release("No eligible target inside selection radius"); return end
+	self.target={id=best.id,generation=best.generation};self.mode=mode
+	self.status=(mode=="snap" and "Snap lock: " or "Target lock: ") .. best.name
+	self:Step(0)
+end
+function CameraLock:Step(dt)
+	if not self.target then return end
+	if not self:Ready() then self:Release("Tracking disabled, character unavailable, or camera changed"); return end
+	local camera=Workspace.CurrentCamera
+	local selected=nil
+	for _, entity in ipairs(self.store:Get(Workspace:GetServerTimeNow())) do if entity.id==self.target.id then selected=entity;break end end
+	if not selected or selected.generation~=self.target.generation or not self:Eligible(selected,camera) or not self:Visible(selected,camera) then self:Release("Target unavailable");return end
+	local point = self:Point(selected)
+	if (point-camera.CFrame.Position).Magnitude < 0.01 then self:Release("Target too close");return end
+	local goal=CFrame.lookAt(camera.CFrame.Position,point)
+	local alpha=self.mode=="snap" and 1 or 1-math.exp(-self.config.LockSmoothing*math.max(0,dt))
+	camera.CFrame=camera.CFrame:Lerp(goal,alpha)
+end
+function CameraLock:GetStatus() return self.status end
+function CameraLock:Destroy()
+	self:Release();self.input:Disconnect();RunService:UnbindFromRenderStep(self.binding)
+end
+return CameraLock
+]=]},
+{folder="client",name="DesktopBridge",class="LocalScript",source=[=[
+local Players=game:GetService("Players")
+local ReplicatedStorage=game:GetService("ReplicatedStorage")
+local RunService=game:GetService("RunService")
+local Workspace=game:GetService("Workspace")
+local player=Players.LocalPlayer
+local remote=ReplicatedStorage:WaitForChild("PlayerTracking"):WaitForChild("DesktopBridge")
+local gui=Instance.new("ScreenGui")
+gui.Name="DesktopPairing";gui.ResetOnSpawn=false;gui.Parent=player:WaitForChild("PlayerGui")
+local label=Instance.new("TextLabel")
+label.Size=UDim2.fromOffset(340,44);label.Position=UDim2.new(0.5,-170,0,12)
+label.BackgroundColor3=Color3.fromRGB(12,23,39);label.TextColor3=Color3.fromRGB(130,195,255)
+label.TextSize=14;label.Font=Enum.Font.GothamMedium;label.Visible=false;label.Parent=gui
+local round=Instance.new("UICorner");round.CornerRadius=UDim.new(0,12);round.Parent=label
+local lastCodeAt=0
+remote.OnClientEvent:Connect(function(code)
+	if type(code)~="string" then return end
+	label.Text="Desktop pairing: "..code;label.Visible=true;lastCodeAt=os.clock()
+end)
+local elapsed=0
+RunService.Heartbeat:Connect(function(dt)
+	elapsed+=dt
+	if elapsed<0.2 then return end
+	elapsed=0
+	if os.clock()-lastCodeAt>5 then label.Visible=false end
+	if player:GetAttribute("PlayerTrackingAllowed")~=true then label.Visible=false;return end
+	local camera=Workspace.CurrentCamera
+	if camera then
+		-- Normalize to vertical FOV regardless of the game's FieldOfViewMode.
+		local viewport=camera.ViewportSize
+		local vertical=camera.FieldOfView
+		if camera.FieldOfViewMode==Enum.FieldOfViewMode.Diagonal then
+			vertical=math.deg(2*math.atan(math.tan(math.rad(camera.DiagonalFieldOfView)/2)*viewport.Y/math.sqrt(viewport.X^2+viewport.Y^2)))
+		elseif camera.FieldOfViewMode==Enum.FieldOfViewMode.MaxAxis and viewport.X>viewport.Y then
+			vertical=math.deg(2*math.atan(math.tan(math.rad(camera.MaxAxisFieldOfView)/2)*viewport.Y/viewport.X))
+		end
+		remote:FireServer(camera.CFrame,viewport,vertical)
+	end
+end)
+]=]},
+{folder="client",name="Menu",class="ModuleScript",source=[=[
+local UserInputService = game:GetService("UserInputService")
+local UI = require(script.Parent.UI)
+local Menu = {}
+function Menu.new(parent, settings, config, cameraLock)
+	local self = {}
+	local button = UI.Make("TextButton", {
+		Text = "TRACKING · MENU", Font = Enum.Font.GothamBold, TextSize = 12,
+		Size = UDim2.fromOffset(170, 38), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1,-20,0,50),
+		BackgroundColor3 = Color3.fromRGB(20, 53, 90), TextColor3 = Color3.new(1,1,1), BorderSizePixel = 0,
+	}, parent)
+	UI.Make("UICorner", {CornerRadius = UDim.new(0,12)}, button)
+	local panel = UI.Make("Frame", {
+		Size = UDim2.new(0, 290, 0.72, 0), AnchorPoint = Vector2.new(1,0), Position = UDim2.new(1,-20,0,100),
+		BackgroundColor3 = Color3.fromRGB(10,17,28), BorderSizePixel = 0, Visible = false,
+	}, parent)
+	UI.Make("UISizeConstraint", {MaxSize = Vector2.new(290,650)}, panel)
+	UI.Make("UICorner", {CornerRadius = UDim.new(0,16)}, panel)
+	UI.Make("UIStroke", {Color = Color3.fromRGB(35,70,110)}, panel)
+	local scroll = UI.Make("ScrollingFrame", {
+		Size = UDim2.new(1,-24,1,-24), Position = UDim2.fromOffset(12,12), BackgroundTransparency = 1,
+		BorderSizePixel = 0, ScrollBarThickness = 3, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+	}, panel)
+	UI.Make("UIListLayout", {Padding = UDim.new(0,7), SortOrder = Enum.SortOrder.LayoutOrder}, scroll)
+	local order = 0
+	local function row(text, callback)
+		order += 1
+		local control = UI.Make("TextButton", {
+			Text = text, Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = Color3.fromRGB(225,240,255),
+			BackgroundColor3 = Color3.fromRGB(20,32,49), BorderSizePixel = 0,
+			Size = UDim2.new(1,-4,0,34), LayoutOrder = order,
+		}, scroll)
+		UI.Make("UICorner", {CornerRadius = UDim.new(0,9)}, control)
+		if callback then control.Activated:Connect(function() callback(control) end) end
+		return control
+	end
+	local status = row("Waiting for server authorization")
+	status.AutoButtonColor = false
+	local lockStatus = row("Camera lock: OFF")
+	lockStatus.AutoButtonColor = false
+	if cameraLock then
+		row("Snap lock [" .. config.SnapLockKey.Name .. "]", function() cameraLock:Toggle("snap") end)
+		row("Target lock [" .. config.TargetLockKey.Name .. "]", function() cameraLock:Toggle("smooth") end)
+		row("Release lock [" .. config.ReleaseLockKey.Name .. "]", function() cameraLock:Release("Released") end)
+	end
+	for _, key in ipairs({"Enabled","Boxes","Names","Distance","Health","Team","Skeleton","WallHighlights","Radar","UseTeamColors","ShowTeammates"}) do
+		local function text() return key .. ": " .. (settings[key] and "ON" or "OFF") end
+		row(text(), function(control) settings[key] = not settings[key]; control.Text = text() end)
+	end
+	local function cycle(key, values, suffix)
+		row(key .. ": " .. settings[key] .. suffix, function(control)
+			local index = table.find(values, settings[key]) or 0
+			settings[key] = values[index % #values + 1]
+			control.Text = key .. ": " .. settings[key] .. suffix
+		end)
+	end
+	cycle("RadarRange", {100,300,500,1000}, " studs")
+	cycle("RadarSize", {140,180,220}, " px")
+	cycle("MaxDistance", {300,750,1500,3000}, " studs")
+	local palette = {
+		Color3.fromRGB(39,136,255), Color3.fromRGB(100,235,255), Color3.fromRGB(112,255,208),
+		Color3.fromRGB(255,170,75), Color3.fromRGB(255,110,195), Color3.fromRGB(235,244,255),
+	}
+	for _, key in ipairs({"Box","Text","Skeleton","Radar","Wall"}) do
+		local control = row(key .. " color · click to cycle", function(current)
+			local index = table.find(palette, settings.Colors[key]) or 0
+			settings.Colors[key] = palette[index % #palette + 1]
+			current.TextColor3 = settings.Colors[key]
+		end)
+		control.TextColor3 = settings.Colors[key]
+	end
+	row("Team colors override box / radar colors").AutoButtonColor = false
+	button.Activated:Connect(function() panel.Visible = not panel.Visible end)
+	local connection = UserInputService.InputBegan:Connect(function(input, processed)
+		if not processed and input.KeyCode == config.MenuKey then panel.Visible = not panel.Visible end
+	end)
+	function self:SetStatus(text) status.Text = text end
+	function self:SetLockStatus(text) lockStatus.Text = text end
+	function self:Destroy() connection:Disconnect(); panel:Destroy(); button:Destroy() end
+	return self
+end
+return Menu
+]=]},
+{folder="client",name="Projection",class="ModuleScript",source=[=[
+local Projection = {}
+function Projection.Point(camera, position)
+	local point, visible = camera:WorldToViewportPoint(position)
+	return Vector2.new(point.X, point.Y), visible and point.Z > 0.1
+end
+function Projection.Box(camera, cf, size)
+	local minimum = Vector2.new(math.huge, math.huge)
+	local maximum = Vector2.new(-math.huge, -math.huge)
+	for _, x in ipairs({-1, 1}) do
+		for _, y in ipairs({-1, 1}) do
+			for _, z in ipairs({-1, 1}) do
+				local corner = cf:PointToWorldSpace(Vector3.new(size.X*x/2, size.Y*y/2, size.Z*z/2))
+				local point = camera:WorldToViewportPoint(corner)
+				-- Reject boxes crossing the near plane rather than draw huge inverted rectangles.
+				if point.Z <= 0.1 then return nil end
+				minimum = Vector2.new(math.min(minimum.X, point.X), math.min(minimum.Y, point.Y))
+				maximum = Vector2.new(math.max(maximum.X, point.X), math.max(maximum.Y, point.Y))
+			end
+		end
+	end
+	local viewport = camera.ViewportSize
+	if maximum.X < 0 or maximum.Y < 0 or minimum.X > viewport.X or minimum.Y > viewport.Y then return nil end
+	minimum = Vector2.new(math.max(0, minimum.X), math.max(0, minimum.Y))
+	maximum = Vector2.new(math.min(viewport.X, maximum.X), math.min(viewport.Y, maximum.Y))
+	return minimum, maximum - minimum
+end
+return Projection
+]=]},
+{folder="client",name="Radar",class="ModuleScript",source=[=[
+local UI = require(script.Parent.UI)
+local Radar = {}
+Radar.__index = Radar
+function Radar.new(parent)
+	local frame = UI.Make("Frame", {
+		AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 20, 1, -24),
+		BackgroundColor3 = Color3.fromRGB(10, 17, 28), BackgroundTransparency = 0.12, BorderSizePixel = 0,
+		ClipsDescendants = true, Visible = false,
+	}, parent)
+	UI.Make("UICorner", {CornerRadius = UDim.new(1, 0)}, frame)
+	UI.Make("UIStroke", {Color = Color3.fromRGB(39, 80, 125)}, frame)
+	UI.Make("Frame", {Size = UDim2.new(1, 0, 0, 1), Position = UDim2.fromScale(0, 0.5), BorderSizePixel = 0, BackgroundColor3 = Color3.fromRGB(30, 48, 70)}, frame)
+	UI.Make("Frame", {Size = UDim2.new(0, 1, 1, 0), Position = UDim2.fromScale(0.5, 0), BorderSizePixel = 0, BackgroundColor3 = Color3.fromRGB(30, 48, 70)}, frame)
+	UI.Make("TextLabel", {Text = "▲", Size = UDim2.fromOffset(16,16), AnchorPoint = Vector2.new(0.5,0.5), Position = UDim2.fromScale(0.5,0.5), BackgroundTransparency = 1, TextColor3 = Color3.new(1,1,1), TextSize = 14, ZIndex = 3}, frame)
+	return setmetatable({frame = frame, dots = {}}, Radar)
+end
+function Radar:Update(entities, camera, settings, origin)
+	self.frame.Visible = settings.Enabled and settings.Radar
+	if not self.frame.Visible then return end
+	local size, range = settings.RadarSize, math.max(1, settings.RadarRange)
+	self.frame.Size = UDim2.fromOffset(size, size)
+	local look = camera.CFrame.LookVector
+	local forward = Vector3.new(look.X, 0, look.Z)
+	if forward.Magnitude < 0.001 then forward = Vector3.new(0, 0, -1) else forward = forward.Unit end
+	local right = forward:Cross(Vector3.new(0, 1, 0))
+	local used = {}
+	for _, entity in ipairs(entities) do
+		local delta = entity.root.Position-origin
+		local planar = Vector3.new(delta.X, 0, delta.Z)
+		if planar.Magnitude <= range then
+			used[entity.id] = true
+			local dot = self.dots[entity.id]
+			if not dot then
+				dot = UI.Make("TextLabel", {Text = "▲", BackgroundTransparency = 1, Size = UDim2.fromOffset(12,12), AnchorPoint = Vector2.new(0.5,0.5), TextSize = 12, ZIndex = 2}, self.frame)
+				self.dots[entity.id] = dot
+			end
+			dot.Position = UDim2.fromOffset(size/2+planar:Dot(right)/range*(size/2-10), size/2-planar:Dot(forward)/range*(size/2-10))
+			local heading = entity.root.LookVector
+			dot.Rotation = math.deg(math.atan2(heading:Dot(right), heading:Dot(forward)))
+			dot.TextColor3 = settings.UseTeamColors and not entity.neutral and entity.teamColor or settings.Colors.Radar
+			dot.Visible = true
+		end
+	end
+	for id, dot in pairs(self.dots) do if not used[id] then dot:Destroy(); self.dots[id] = nil end end
+end
+function Radar:Clear()
+	self.frame.Visible = false
+	for id, dot in pairs(self.dots) do dot:Destroy(); self.dots[id] = nil end
+end
+return Radar
+]=]},
+{folder="client",name="Renderer",class="ModuleScript",source=[=[
+local UI = require(script.Parent.UI)
+local Projection = require(script.Parent.Projection)
+local Renderer = {}
+Renderer.__index = Renderer
+function Renderer.new(parent)
+	return setmetatable({parent = parent, entries = {}, factories = {}}, Renderer)
+end
+-- Register before the first Update. A feature implements Update, Hide and Destroy.
+function Renderer:RegisterFeature(name, factory)
+	assert(next(self.entries) == nil, "Register features before rendering begins")
+	self.factories[name] = factory
+end
+function Renderer:Create()
+	local entry = {features = {}}
+	entry.box = UI.Make("Frame", {BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false}, self.parent)
+	entry.stroke = UI.Make("UIStroke", {Thickness = 1.5}, entry.box)
+	entry.info = UI.Make("TextLabel", {
+		BackgroundTransparency = 1, Size = UDim2.fromOffset(240, 58), AnchorPoint = Vector2.new(0.5, 1),
+		Font = Enum.Font.GothamMedium, TextSize = 12, TextStrokeTransparency = 0.25,
+		TextYAlignment = Enum.TextYAlignment.Bottom, Visible = false,
+	}, self.parent)
+	entry.health = UI.Make("Frame", {BackgroundColor3 = Color3.fromRGB(18, 23, 30), BorderSizePixel = 0, Visible = false}, self.parent)
+	entry.fill = UI.Make("Frame", {BorderSizePixel = 0, AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1)}, entry.health)
+	for name, factory in pairs(self.factories) do entry.features[name] = factory(self.parent) end
+	return entry
+end
+function Renderer:HideEntry(entry)
+	entry.box.Visible, entry.info.Visible, entry.health.Visible = false, false, false
+	for _, feature in pairs(entry.features) do feature:Hide() end
+end
+function Renderer:Update(entities, camera, settings, origin)
+	local used = {}
+	for _, entity in ipairs(entities) do
+		used[entity.id] = true
+		local entry = self.entries[entity.id]
+		if not entry then entry = self:Create(); self.entries[entity.id] = entry end
+		self:HideEntry(entry)
+		local top, size = Projection.Box(camera, entity.root * entity.boxOffset, entity.size)
+		if top then
+			local color = settings.UseTeamColors and not entity.neutral and entity.teamColor or settings.Colors.Box
+			entry.box.Position, entry.box.Size = UDim2.fromOffset(top.X, top.Y), UDim2.fromOffset(size.X, size.Y)
+			entry.stroke.Color, entry.box.Visible = color, settings.Boxes
+			local lines = {}
+			if settings.Names then table.insert(lines, entity.name .. " (@" .. entity.username .. ")") end
+			local details = {}
+			if settings.Team then table.insert(details, entity.team) end
+			if settings.Distance then table.insert(details, string.format("%.0f studs", (entity.root.Position-origin).Magnitude)) end
+			if #details > 0 then table.insert(lines, table.concat(details, " · ")) end
+			if settings.Health then table.insert(lines, string.format("HP %.0f / %.0f", entity.health, entity.maxHealth)) end
+			entry.info.Text, entry.info.TextColor3 = table.concat(lines, "\n"), settings.Colors.Text
+			entry.info.Position = UDim2.fromOffset(top.X+size.X/2, math.max(58, top.Y-5))
+			entry.info.Visible = #lines > 0
+			entry.health.Position, entry.health.Size = UDim2.fromOffset(top.X-7, top.Y), UDim2.fromOffset(3, size.Y)
+			local ratio = math.clamp(entity.health/math.max(1, entity.maxHealth), 0, 1)
+			entry.fill.Size = UDim2.fromScale(1, ratio)
+			entry.fill.BackgroundColor3 = Color3.fromRGB(255, 80, 90):Lerp(Color3.fromRGB(90, 230, 140), ratio)
+			entry.health.Visible = settings.Health
+			for _, feature in pairs(entry.features) do feature:Update(entity, camera, settings) end
+		end
+	end
+	for id, entry in pairs(self.entries) do
+		if not used[id] then
+			for _, feature in pairs(entry.features) do feature:Destroy() end
+			entry.box:Destroy(); entry.info:Destroy(); entry.health:Destroy()
+			self.entries[id] = nil
+		end
+	end
+end
+function Renderer:Clear()
+	self:Update({}, nil, nil, nil)
+end
+return Renderer
+]=]},
+{folder="client",name="Skeleton",class="ModuleScript",source=[=[
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Rig = require(ReplicatedStorage:WaitForChild("PlayerTracking"):WaitForChild("Rig"))
+local UI = require(script.Parent.UI)
+local Projection = require(script.Parent.Projection)
+local Skeleton = {}
+Skeleton.__index = Skeleton
+function Skeleton.new(parent)
+	local self = setmetatable({lines = {}}, Skeleton)
+	for _ = 1, 14 do table.insert(self.lines, UI.Line(parent)) end
+	return self
+end
+function Skeleton:Hide()
+	for _, line in ipairs(self.lines) do line.Visible = false end
+end
+function Skeleton:Update(entity, camera, settings)
+	self:Hide()
+	if not settings.Skeleton then return end
+	for index, link in ipairs(Rig.Links[entity.rig] or {}) do
+		local first, last = entity.joints[link[1]], entity.joints[link[2]]
+		if first and last then
+			local a, aVisible = Projection.Point(camera, first)
+			local b, bVisible = Projection.Point(camera, last)
+			if aVisible and bVisible then UI.SetLine(self.lines[index], a, b, settings.Colors.Skeleton) end
+		end
+	end
+end
+function Skeleton:Destroy()
+	for _, line in ipairs(self.lines) do line:Destroy() end
+end
+return Skeleton
+]=]},
+{folder="client",name="Store",class="ModuleScript",source=[=[
+local Store = {}
+Store.__index = Store
+function Store.new(config)
+	return setmetatable({config = config, history = {}, sequence = 0}, Store)
+end
+function Store:Push(packet)
+	if packet.sequence <= self.sequence then return end
+	self.sequence = packet.sequence
+	local present = {}
+	for _, entity in ipairs(packet.entities) do
+		present[entity.id] = true
+		local history = self.history[entity.id]
+		if not history or history.generation ~= entity.generation then
+			history = {generation = entity.generation, samples = {}}
+			self.history[entity.id] = history
+		end
+		table.insert(history.samples, {time = packet.time, entity = entity})
+		while #history.samples > 8 do table.remove(history.samples, 1) end
+	end
+	for id in pairs(self.history) do if not present[id] then self.history[id] = nil end end
+end
+function Store:Get(now)
+	local result = {}
+	local target = now - self.config.InterpolationDelay
+	for _, history in pairs(self.history) do
+		local samples = history.samples
+		local newest = samples[#samples]
+		if now - newest.time <= self.config.StaleAfter then
+			local left, right = samples[1], newest
+			for index = 1, #samples - 1 do
+				if target >= samples[index].time and target <= samples[index + 1].time then
+					left, right = samples[index], samples[index + 1]
+					break
+				end
+			end
+			if target >= newest.time then left, right = newest, newest end
+			if target <= samples[1].time then left, right = samples[1], samples[1] end
+			local alpha = right.time > left.time and math.clamp((target - left.time) / (right.time - left.time), 0, 1) or 1
+			local entity = table.clone(right.entity)
+			entity.root = left.entity.root:Lerp(right.entity.root, alpha)
+			entity.joints = {}
+			for name, position in pairs(right.entity.joints) do
+				entity.joints[name] = (left.entity.joints[name] or position):Lerp(position, alpha)
+			end
+			table.insert(result, entity)
+		end
+	end
+	return result
+end
+return Store
+]=]},
+{folder="client",name="Tracking",class="LocalScript",source=[=[
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local UI = require(script.Parent.UI)
+local Store = require(script.Parent.Store)
+local Renderer = require(script.Parent.Renderer)
+local Skeleton = require(script.Parent.Skeleton)
+local Radar = require(script.Parent.Radar)
+local Menu = require(script.Parent.Menu)
+local CameraLock = require(script.Parent.CameraLock)
+local WallHighlights = require(script.Parent.WallHighlights)
+local shared = ReplicatedStorage:WaitForChild("PlayerTracking")
+local Config = require(shared:WaitForChild("Config"))
+local player = Players.LocalPlayer
+local settings = table.clone(Config.Defaults)
+settings.Colors = table.clone(Config.Colors)
+settings.RadarRange, settings.RadarSize, settings.MaxDistance = Config.RadarRange, Config.RadarSize, Config.MaxDistance
+local gui = UI.Make("ScreenGui", {Name = "PlayerTracking", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 10, ZIndexBehavior = Enum.ZIndexBehavior.Sibling}, player:WaitForChild("PlayerGui"))
+local drawing = UI.Make("Frame", {Size = UDim2.fromScale(1,1), BackgroundTransparency = 1}, gui)
+local radarLayer = UI.Make("Frame", {Size = UDim2.fromScale(1,1), BackgroundTransparency = 1, ZIndex = 2}, gui)
+local menuLayer = UI.Make("Frame", {Size = UDim2.fromScale(1,1), BackgroundTransparency = 1, ZIndex = 5}, gui)
+local renderer = Renderer.new(drawing)
+renderer:RegisterFeature("Skeleton", function(parent) return Skeleton.new(parent) end)
+renderer:RegisterFeature("WallHighlights", function() return WallHighlights.new() end)
+local store = Store.new(Config)
+local cameraLock = CameraLock.new(player, store, settings, Config)
+local radar, menu = Radar.new(radarLayer), Menu.new(menuLayer, settings, Config, cameraLock)
+local snapshotConnection = shared:WaitForChild("Snapshot").OnClientEvent:Connect(function(packet) store:Push(packet) end)
+local elapsed = 0
+local renderConnection = RunService.RenderStepped:Connect(function(dt)
+	elapsed += dt
+	if elapsed < 1/math.clamp(Config.RenderHz, 1, 60) then return end
+	elapsed = 0
+	menu:SetLockStatus(cameraLock:GetStatus())
+	local camera = Workspace.CurrentCamera
+	local authorized = player:GetAttribute("PlayerTrackingAllowed") == true
+	if not camera or not authorized or not settings.Enabled then
+		renderer:Clear(); radar:Clear()
+		menu:SetStatus(not authorized and "Not authorized by server" or "Tracking disabled")
+		return
+	end
+	local localRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	local origin = localRoot and localRoot.Position or camera.CFrame.Position
+	local candidates = {}
+	for _, entity in ipairs(store:Get(Workspace:GetServerTimeNow())) do
+		local sameTeam = not player.Neutral and not entity.neutral and player.Team and player.Team.Name == entity.team
+		if entity.id ~= player.UserId and (settings.ShowTeammates or not sameTeam) then
+			local distance = (entity.root.Position-origin).Magnitude
+			if distance <= settings.MaxDistance then entity.distance = distance; table.insert(candidates, entity) end
+		end
+	end
+	table.sort(candidates, function(a,b) return a.distance < b.distance end)
+	local visible = {}
+	for index = 1, math.min(#candidates, Config.MaxRenderedPlayers) do visible[index] = candidates[index] end
+	renderer:Update(visible, camera, settings, origin)
+	radar:Update(candidates, camera, settings, origin)
+	menu:SetStatus(string.format("%d tracked · %d render budget", #candidates, #visible))
+end)
+script.Destroying:Connect(function()
+	snapshotConnection:Disconnect(); renderConnection:Disconnect()
+	cameraLock:Destroy()
+	renderer:Clear(); radar:Clear(); menu:Destroy(); gui:Destroy()
+end)
+]=]},
+{folder="client",name="UI",class="ModuleScript",source=[=[
+local UI = {}
+function UI.Make(class, properties, parent)
+	local object = Instance.new(class)
+	for key, value in pairs(properties) do object[key] = value end
+	object.Parent = parent
+	return object
+end
+function UI.Line(parent)
+	return UI.Make("Frame", {BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Visible = false}, parent)
+end
+function UI.SetLine(line, first, last, color)
+	local delta = last - first
+	line.Position = UDim2.fromOffset((first.X+last.X)/2, (first.Y+last.Y)/2)
+	line.Size = UDim2.fromOffset(delta.Magnitude, 2)
+	line.Rotation = math.deg(math.atan2(delta.Y, delta.X))
+	line.BackgroundColor3 = color
+	line.Visible = true
+end
+return UI
+]=]},
+{folder="client",name="WallHighlights",class="ModuleScript",source=[=[
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local Walls = {}
+Walls.__index = Walls
+function Walls.new()
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "AuthorizedTrackingHighlight"
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.FillTransparency = 0.8
+	highlight.OutlineTransparency = 0
+	highlight.Enabled = false
+	highlight.Parent = Workspace
+	return setmetatable({highlight = highlight}, Walls)
+end
+function Walls:Hide() self.highlight.Enabled = false end
+function Walls:Update(entity, _camera, settings)
+	local player = Players:GetPlayerByUserId(entity.id)
+	local character = player and player.Character
+	self.highlight.Adornee = character
+	self.highlight.FillColor = settings.Colors.Wall
+	self.highlight.OutlineColor = settings.Colors.Box
+	self.highlight.Enabled = settings.WallHighlights and character ~= nil
+end
+function Walls:Destroy() self.highlight:Destroy() end
+return Walls
+]=]}
+}
+local staged={}
+local ok,err=pcall(function()
+ for key,entry in pairs(destinations) do local folder=Instance.new("Folder");folder.Name=entry.name;staged[key]=folder end
+ for _,entry in ipairs(sources) do
+  local instance=Instance.new(entry.class)
+  instance.Name=entry.name
+  instance.Parent=staged[entry.folder]
+  instance.Source=entry.source
+ end
+end)
+if not ok then for _,folder in pairs(staged) do folder:Destroy() end;error("Install aborted before modifying your project: "..tostring(err)) end
+game:GetService("ChangeHistoryService"):SetWaypoint("Before PlayerTracking install")
+local backup=nil
+for key,entry in pairs(destinations) do
+ local existing=entry.parent:FindFirstChild(entry.name)
+ if existing then
+  if not backup then backup=Instance.new("Folder");backup.Name="PlayerTrackingBackup_"..game:GetService("HttpService"):GenerateGUID(false);backup.Parent=ServerStorage end
+  for _,child in ipairs(existing:GetDescendants()) do if child:IsA("BaseScript") then child:SetAttribute("PlayerTrackingPreviouslyDisabled",child.Disabled);child.Disabled=true end end
+  existing.Parent=backup
+ end
+ staged[key].Parent=entry.parent
+end
+game:GetService("ChangeHistoryService"):SetWaypoint("PlayerTracking installed")
+print("Installed ESP walls, boxes, skeletons, and Q/T/X camera locks. Test with two Studio clients. Before publishing, set ReplicatedStorage.PlayerTracking.Config.AllowedUserIds. HTTP export remains disabled.")
+if backup then print("Previous tracker folders are preserved in ServerStorage/"..backup.Name..". Restore viewer IDs and custom settings deliberately; do not enable public tracking unintentionally.") end

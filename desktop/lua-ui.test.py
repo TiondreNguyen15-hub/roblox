@@ -6,7 +6,7 @@ root=Path(__file__).resolve().parent
 bridge=r'''
 const fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os');
 const Service=require(process.argv[1]);let events=[],service,root;
-const ready=(async()=>{root=await fs.mkdtemp(path.join(os.tmpdir(),'blue-lua-ui-'));const file=path.join(root,'script.lua');service=new Service({root:path.join(root,'library'),runner:process.argv[2],owner:()=>null,dialog:{showSaveDialog:async()=>({canceled:false,filePath:file}),showOpenDialog:async()=>({canceled:false,filePaths:[file]})},send:e=>events.push(e)});})();
+const ready=(async()=>{root=await fs.mkdtemp(path.join(os.tmpdir(),'blue-lua-ui-'));const file=path.join(root,'script.lua');service=new Service({root:path.join(root,'library'),runner:process.argv[2],owner:()=>null,dialog:{showMessageBox:async()=>({response:1}),showSaveDialog:async()=>({canceled:false,filePath:file}),showOpenDialog:async()=>({canceled:false,filePaths:[file]})},send:e=>events.push(e)});})();
 let queue=Promise.resolve();require('node:readline').createInterface({input:process.stdin}).on('line',line=>{queue=queue.then(async()=>{await ready;let value=null,error=null;try{const c=JSON.parse(line);if(c.action!=='events')value=await service[c.action](c.arg);}catch(e){error=e.message;}console.log(JSON.stringify({value,error,events:events.splice(0)}));});});
 process.on('SIGTERM',async()=>{service?.stop();if(root)await fs.rm(root,{recursive:true,force:true});process.exit(0);});
 '''
@@ -20,7 +20,7 @@ try:
   browser=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox'])
   page=browser.new_page(viewport={'width':1280,'height':1000});errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
   page.expose_binding('scriptNative',lambda source,arg:command(arg))
-  page.add_init_script('''window.luaEvents=[];window.deliverLua=r=>{r.events.forEach(e=>luaEvents.forEach(f=>f(e)));if(r.error)throw new Error(r.error);return r.value};window.luaScripts={onEvent:f=>luaEvents.push(f)};for(const action of ['list','load','save','select','run','stop'])window.luaScripts[action]=arg=>scriptNative({action,arg}).then(deliverLua);setInterval(()=>scriptNative({action:'events'}).then(deliverLua),50);''')
+  page.add_init_script('''window.luaEvents=[];window.deliverLua=r=>{r.events.forEach(e=>luaEvents.forEach(f=>f(e)));if(r.error)throw new Error(r.error);return r.value};window.luaScripts={onEvent:f=>luaEvents.push(f)};for(const action of ['list','load','save','select','run','stop','confirmDiscard'])window.luaScripts[action]=arg=>scriptNative({action,arg}).then(deliverLua);setInterval(()=>scriptNative({action:'events'}).then(deliverLua),50);''')
   page.goto('http://127.0.0.1:8765');page.get_by_role('tab',name='Lua Scripts',exact=False).click()
   assert page.get_by_role('tab').count()==3
   page.locator('#lua-source').fill('local answer = 6 * 7\nprint(answer)')
@@ -44,6 +44,23 @@ try:
   page.get_by_role('button',name='Load Script',exact=True).click()
   page.wait_for_function("()=>document.getElementById('lua-source').value==='print(2)'")
   assert page.locator('#lua-list').input_value()==''
+  page.locator('#lua-source').fill('print("unsaved")')
+  page.evaluate("()=>{window.savedConfirm=window.luaScripts.confirmDiscard;window.savedLoad=window.luaScripts.load;window.luaScripts.confirmDiscard=async()=>false}")
+  page.get_by_role('button',name='Load Script',exact=True).click()
+  page.wait_for_function("()=>document.getElementById('lua-status').textContent.includes('unsaved edits kept')")
+  assert page.locator('#lua-source').input_value()=='print("unsaved")'
+  page.evaluate("()=>{window.luaScripts.confirmDiscard=async()=>{throw new Error('fixture confirmation failure')}}")
+  page.get_by_role('button',name='Load Script',exact=True).click()
+  page.wait_for_function("()=>document.getElementById('lua-status').textContent.includes('fixture confirmation failure')")
+  page.evaluate("()=>{window.luaScripts.confirmDiscard=window.savedConfirm;window.luaScripts.load=async()=>null}")
+  page.get_by_role('button',name='Load Script',exact=True).click()
+  page.wait_for_function("()=>document.getElementById('lua-status').textContent==='Load cancelled · no file selected'")
+  page.evaluate("()=>{window.luaScripts.load=async()=>{throw new Error('LOAD_DIALOG_FAILED: fixture')}}")
+  page.get_by_role('button',name='Load Script',exact=True).click()
+  page.wait_for_function("()=>document.getElementById('lua-status').textContent.includes('LOAD_DIALOG_FAILED')")
+  assert page.get_by_role('button',name='Load Script',exact=True).is_enabled()
+  page.evaluate("()=>{window.luaScripts.load=window.savedLoad}")
+
   page.locator('#lua-source').fill('local value = 1\nerror("intentional")');page.get_by_label('Authorized project name',exact=True).fill('My project');page.get_by_label('I own or am authorized to modify this project',exact=True).check()
   page.get_by_role('button',name='Run',exact=True).click()
   page.wait_for_function("()=>document.getElementById('lua-status').textContent.includes('Error on line 2')")

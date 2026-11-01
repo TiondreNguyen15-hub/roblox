@@ -40,3 +40,13 @@ Keys are editable in Config. Skeleton and wall highlights now default on for thi
 All 16 Luau source files compile with the official Luau compiler. The actual CameraLock module passed tests using explicit Roblox service/math doubles for acquisition, snap/smooth interpolation, stable target selection, key-mode release behavior, team/radius checks, line-of-sight, authorization, camera mode, disable, respawn/death/stale removal, and render-binding cleanup. Existing store/projection tests still pass.
 
 These tests do not execute Roblox Studio. Actual camera control, Highlight rendering through geometry, streaming behavior, and multi-client gameplay remain **unverified** here. In Studio, use Server & Clients with two clients, create a wall, test R6/R15 characters and each toggle/key, revoke viewer authorization, kill/respawn the target, change teams, and test your camera controller before publishing.
+
+## One-file installer
+
+`downloads/Roblox-ESP-All-In-One.lua` contains all 16 Roblox source components in one Lua file. In your own authorized project, stop Play mode, open **View → Command Bar** in Roblox Studio, paste the entire file there, and execute it. It creates the shared/server/client folders in their correct services. Run Server & Clients with two clients to test.
+
+It refuses to run outside Studio Edit mode and refuses to overwrite an existing tracker by default. If updating an old installation, preserve your viewer IDs/custom settings, then explicitly set `REPLACE_EXISTING = true` at the top before running. Existing folders are moved to a uniquely named ServerStorage backup and their old scripts are disabled; prior Disabled states are recorded as attributes. Restore authorization/custom settings deliberately in the new Config before publishing. Native Studio installation/rendering remains unverified here.
+
+This is **one installer code**, not one combined client/server runtime. Roblox still requires server authorization and client rendering/camera logic to run in different contexts. Source is staged before changing your project, and Studio history waypoints bracket installation. Rebuild it from source with `python build_single_installer.py`.
+
+The desktop Load Script button can open this `.lua` as text, but the desktop Run button cannot install or execute Roblox components. Use the Studio Command Bar for this installer.

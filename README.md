@@ -1,3 +1,5 @@
+[All Roblox scripts in one Studio installer](downloads/Roblox-ESP-All-In-One.lua). Run it in the Command Bar of your own Studio project in Edit mode; desktop Load opens the file as text, while desktop Run remains a Lua-only sandbox.
+
 [In-game walls/boxes/skeletons and Q/T/X camera-lock scripts](game-tracker/CAMERA-LOCK.md) for your own Roblox Studio experience.
 
 [Lua Script Input guide](desktop/LUA-EDITOR.md): highlighting, file save/load, script library, and isolated local Lua 5.3 Run/Stop. No Studio/client injection or Roblox API execution.

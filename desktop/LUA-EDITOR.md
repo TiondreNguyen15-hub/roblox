@@ -46,3 +46,9 @@ Fengari is pinned in package.json/package-lock.json. The runner and production m
 `python lua-ui.test.py` exercises the editor against actual ScriptService, real Lua child processes, and real file operations. Native dialog choices are test adapters. It verifies highlighting, authorization gating, Run/output, Save/Load/list switching, error-line display, Stop, and narrow layouts. It requires the same local test server, Playwright, and Chromium as the other UI tests. Existing backend and ESP/Aimbot UI regression tests also pass.
 
 The packaged unpacked runner/dependencies were additionally executed with Node on Linux. **Native Windows Electron RunAsNode spawning, Windows file dialogs, and app startup remain unverified here.** No Roblox Studio or live-game script execution is claimed.
+
+## Load Script troubleshooting update
+
+The unsaved-edits prompt now uses native main-process `dialog.showMessageBox` through a fixed IPC method; browser `window.confirm` is not used. Confirmation is inside the button's error handler. The main window is restored/focused before opening the native file picker, and the status is shown above the toolbar so it is visible when clicked. Canceling confirms that no file was loaded; picker and read failures have `LOAD_DIALOG_FAILED` and `LOAD_READ_FAILED` codes. Missing/outdated preload bridges report an update error rather than silently exiting. Fully exit an old running app before opening the updated portable executable.
+
+Tests cover keeping dirty edits, confirming discard, confirmation errors, picker cancellation, failed dialog/read operations, foreground-owner activation, and successfully loading real `.lua` contents. Native Windows dialog behavior remains unverified here. ZIP archives must be extracted; Load Script accepts a `.lua` file, not the ZIP itself.

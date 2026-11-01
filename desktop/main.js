@@ -22,7 +22,7 @@ if(app.requestSingleInstanceLock()){
  app.on('second-instance',()=>{if(window){if(window.isMinimized())window.restore();window.show();window.focus();}});
  app.whenReady().then(()=>{
   scripts=new ScriptService({root:path.join(app.getPath('userData'),'lua-scripts'),runner:app.isPackaged?path.join(process.resourcesPath,'app.asar.unpacked','lua-runner.js'):path.join(__dirname,'lua-runner.js'),dialog,owner:()=>window,send:event=>{if(window&&!window.isDestroyed())window.webContents.send('lua:event',event);}});
-  for(const method of ['list','select','load','save','run','stop'])ipcMain.handle('lua:'+method,(event,arg)=>{check(event);return scripts[method](arg);});
+  for(const method of ['list','select','load','save','run','stop','confirmDiscard'])ipcMain.handle('lua:'+method,(event,arg)=>{check(event);return scripts[method](arg);});
   ipcMain.handle('system:launch',async(event,profiles)=>{check(event);await session.launch(profiles);return true;});
   ipcMain.handle('system:stop',event=>{check(event);session.stop();scripts.stop();return true;});
   ipcMain.handle('system:configure',(event,profiles)=>{check(event);session.configure(profiles);return true;});
