@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; media-src blob:; connect-src https://storage.googleapis.com; worker-src blob:">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; media-src blob:; connect-src 'self'; worker-src 'self' blob:">
 <title>Blue Menu</title>
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -11,13 +11,13 @@
 <main id="app-shell">
 <aside id="sidebar" hidden><div class="brand"><span class="brand-icon">◇</span><span>BLUE MENU<small>DESKTOP WORKSPACE</small></span></div>
 <p class="nav-label">WORKSPACE</p><nav aria-label="Navigation"><button data-view="play">◫ &nbsp; Overview</button><button data-view="esp">▣ &nbsp; ESP</button><button data-view="aim">⊕ &nbsp; Aim</button><button data-view="settings">⚙ &nbsp; Settings</button></nav>
-<div class="connection-card"><span class="section-label">AI CONNECTION</span><span id="network-state" class="network-state">Internet status</span><p>Download the model online.<br>Detect locally on this PC.</p><button id="connect-detection" class="primary">CONNECT DETECTION</button><p id="detection-status" role="status">Start a capture to connect.</p></div>
+<div class="connection-card"><span class="section-label">AI CONNECTION</span><span id="network-state" class="network-state">Bundled model</span><p>Uploaded ONNX model.<br>Runs offline on this PC.</p><button id="connect-detection" class="primary">CONNECT DETECTION</button><p id="detection-status" role="status">Detection starts when you select an application.</p><label class="option">Screen overlay<input id="screen-overlay" type="checkbox" checked></label><p id="overlay-status" role="status">Overlay follows the selected foreground window.</p></div>
 <button class="exit-button" data-view="home">← Main menu</button><small class="sidebar-footer">LOCAL VIDEO PROCESSING</small></aside>
 <div class="content">
 <header><div class="mark" aria-hidden="true">◇</div><h1 id="title">BLUE MENU</h1><p id="subtitle">Ready when you are.</p></header>
 <section id="home" aria-label="Main menu"><button class="primary" data-view="play">PLAY &nbsp; →</button><button data-view="settings">SETTINGS</button><button data-view="credits">CREDITS</button></section>
 <section id="play" hidden aria-label="Dashboard">
-<div class="tool-grid"><article class="tool-card"><span class="tool-icon">▣</span><h2>ESP</h2><p>Visible-person boxes and labels</p><div class="tool-actions"><button data-view="esp">Configure</button><button class="start-capture">Start capture</button></div></article><article class="tool-card"><span class="tool-icon">⊕</span><h2>Aim</h2><p>Crosshair and circle preview</p><div class="tool-actions"><button data-view="aim">Configure</button><button class="start-capture">Start capture</button></div></article></div><div class="capture-card"><div class="card-heading"><div><span class="section-label">CAPTURE</span><h2>Application preview</h2></div><span class="status">LOCAL</span></div>
+<div class="tool-grid"><article class="tool-card"><span class="tool-icon">▣</span><h2>ESP</h2><p>Model detections and labels</p><div class="tool-actions"><button data-view="esp">Configure</button><button class="start-capture">Start capture</button></div></article><article class="tool-card"><span class="tool-icon">⊕</span><h2>Aim</h2><p>Nearest-target marker and circle</p><div class="tool-actions"><button data-view="aim">Configure</button><button class="start-capture">Start capture</button></div></article></div><div class="capture-card"><div class="card-heading"><div><span class="section-label">CAPTURE</span><h2>Application preview</h2></div><span class="status">LOCAL</span></div>
 <button id="choose-app" class="primary">Choose application</button>
 <div id="picker" hidden><p>Choose an open application window.</p><div id="app-list"></div><button id="refresh-apps">REFRESH WINDOWS</button><button id="cancel-picker">CANCEL</button></div>
 <div id="capture-empty"><span>◫</span><h3>Your workspace, in view</h3><p>Choose an open window to start a live preview.</p></div><div id="capture-display" hidden><div id="capture-stage"><video id="capture-video" autoplay muted playsinline aria-label="Selected application capture"></video><canvas id="detection-overlay" aria-label="Detected people"></canvas></div><button id="stop-capture">STOP CAPTURE</button></div>
@@ -32,9 +32,9 @@
 <label class="option">Distance<input id="distance" type="checkbox" checked></label>
 <button class="primary" data-view="play">BACK</button></section>
 <section id="aim" hidden aria-label="Aim">
-<p class="demo-note">Visual preview</p>
+<p class="demo-note">Marker follows the closest detection inside the circle.</p>
 <div class="preview" aria-label="Aim preview"><div id="aim-circle"></div><span id="crosshair">+</span></div>
-<label class="option">Crosshair<input id="crosshair-toggle" type="checkbox" checked></label>
+<label class="option">Target marker<input id="aim-marker" type="checkbox" checked></label><label class="option">Crosshair<input id="crosshair-toggle" type="checkbox" checked></label>
 <label class="option">Show circle<input id="circle-toggle" type="checkbox" checked></label>
 <label class="option" for="circle-size">Circle size <output id="size-value">100 px</output></label>
 <input id="circle-size" type="range" min="40" max="140" value="100" aria-label="Circle size">
@@ -42,8 +42,8 @@
 <section id="credits" hidden aria-label="Credits"><div class="detail"><p>Blue Menu<br>A black and blue desktop experience.<br>Built with Electron.</p></div><button class="primary" data-view="home">BACK</button></section>
 <footer class="eyebrow">BLUE MENU · BLACK & BLUE</footer></div>
 </main>
-<script src="vendor/tf.min.js"></script>
-<script src="vendor/coco-ssd.min.js"></script>
+<script src="vendor/ort.min.js"></script>
+<script src="detector.js"></script>
 <script src="renderer.js"></script>
 </body>
 </html>

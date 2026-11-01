@@ -26,19 +26,21 @@ function updatePreview(){
  circle.style.width=circle.style.height=size+'px';
  document.getElementById('size-value').textContent=size+' px';
 }
-for(const id of ['boxes','names','distance','crosshair-toggle','circle-toggle','circle-size']){
+for(const id of ['boxes','names','distance','crosshair-toggle','circle-toggle','circle-size','aim-marker']){
  const input=document.getElementById(id);
  try{const saved=localStorage.getItem('preview-'+id);if(saved!==null){if(input.type==='checkbox')input.checked=saved==='true';else input.value=saved;}}catch{}
  input.addEventListener('input',()=>{updatePreview();try{localStorage.setItem('preview-'+id,input.type==='checkbox'?String(input.checked):input.value);}catch{}});
 }
 updatePreview();
 let captureStream=null;
+let capturedSource=null;
 let captureBusy=false;
 const picker=document.getElementById('picker');
 const captureStatus=document.getElementById('capture-status');
 const video=document.getElementById('capture-video');
 function stopCapture(){
  disconnectDetection();
+ window.capture?.stopOverlay?.();capturedSource=null;
  if(captureStream){captureStream.getTracks().forEach(track=>track.stop());captureStream=null;}
  video.srcObject=null;
  document.getElementById('capture-display').hidden=true;
@@ -58,7 +60,10 @@ async function captureWindow(source){
   await video.play();
   captureStream.getVideoTracks()[0].addEventListener('ended',stopCapture,{once:true});
   picker.hidden=true;document.getElementById('capture-display').hidden=false;document.getElementById('capture-empty').hidden=true;
-  captureStatus.textContent='Capturing '+source.name+'. Ready to connect visible-person detection.';
+  captureStatus.textContent='Capturing '+source.name+'. Detection starts automatically.';
+  capturedSource=source;
+  await startScreenOverlay();
+  connectDetection();
  }catch(error){
   if(pendingStream)pendingStream.getTracks().forEach(track=>track.stop());
   captureStream=null;video.srcObject=null;
@@ -93,7 +98,7 @@ const connectButton=document.getElementById('connect-detection');
 const overlay=document.getElementById('detection-overlay');
 const context=overlay.getContext('2d');
 let detector=null, modelLoading=null, detectionActive=false, detectionTimer=null, detectionGeneration=0;
-function clearDetections(){context.clearRect(0,0,overlay.width,overlay.height);}
+function clearDetections(){context.clearRect(0,0,overlay.width,overlay.height);window.capture?.updateOverlay?.(null);}
 function disconnectDetection(){
  detectionActive=false;detectionGeneration++;clearTimeout(detectionTimer);clearDetections();
  connectButton.textContent='CONNECT DETECTION';connectButton.disabled=false;
@@ -103,9 +108,8 @@ async function loadDetector(){
  if(detector)return detector;
  if(!modelLoading){
   modelLoading=(async()=>{
-   if(!window.tf||!window.cocoSsd)throw new Error('Missing detector libraries');
-   await tf.ready();
-   return cocoSsd.load({base:'lite_mobilenet_v2'});
+   if(!window.ort||!window.RobloxDetector)throw new Error('Missing ONNX runtime');
+   return RobloxDetector.load();
   })().then(model=>{detector=model;return model;}).finally(()=>{modelLoading=null;});
  }
  return modelLoading;
@@ -114,20 +118,30 @@ async function detectFrame(generation){
  if(!detectionActive||generation!==detectionGeneration||!captureStream)return;
  try{
   if(video.readyState>=2 && video.videoWidth){
-   const predictions=await detector.detect(video,20,0.55);
+   const predictions=await detector.detect(video);
    if(!detectionActive||generation!==detectionGeneration)return;
    overlay.width=video.videoWidth;overlay.height=video.videoHeight;
-   const people=predictions.filter(prediction=>prediction.class==='person'&&prediction.score>=0.55);
+   const people=predictions.filter(prediction=>prediction.score>=0.55);
    context.strokeStyle='#2788ff';context.fillStyle='#2788ff';
    context.lineWidth=Math.max(2,overlay.width/500);context.font=`${Math.max(14,overlay.width/65)}px Arial`;
    if(document.getElementById('boxes').checked){
     for(const person of people){
      const [x,y,width,height]=person.bbox;
      context.strokeRect(x,y,width,height);
-     if(document.getElementById('names').checked)context.fillText('Person '+Math.round(person.score*100)+'%',Math.max(0,x),Math.max(18,y-5));
+     if(document.getElementById('names').checked)context.fillText('Enemy '+Math.round(person.score*100)+'%',Math.max(0,x),Math.max(18,y-5));
     }
    }
-   detectionStatus.textContent=people.length+' visible person'+(people.length===1?'':'s')+' detected. Demo distance is not applied to capture.';
+   const radius=Number(document.getElementById('circle-size').value)/2;
+   const center=[video.videoWidth/2,video.videoHeight/2];
+   let target=null,nearest=Infinity;
+   if(document.getElementById('aim-marker').checked){
+    for(const person of people){const [x,y,w,h]=person.bbox;const point=[x+w/2,y+h/2];const distance=Math.hypot(point[0]-center[0],point[1]-center[1]);if(distance<=radius&&distance<nearest){target=point;nearest=distance;}}
+   }
+   if(document.getElementById('circle-toggle').checked){context.beginPath();context.arc(center[0],center[1],radius,0,Math.PI*2);context.stroke();}
+   if(document.getElementById('crosshair-toggle').checked){context.beginPath();context.moveTo(center[0]-7,center[1]);context.lineTo(center[0]+7,center[1]);context.moveTo(center[0],center[1]-7);context.lineTo(center[0],center[1]+7);context.stroke();}
+   if(target){context.strokeStyle='#70ffd0';context.beginPath();context.arc(target[0],target[1],8,0,Math.PI*2);context.moveTo(center[0],center[1]);context.lineTo(target[0],target[1]);context.stroke();}
+   window.capture?.updateOverlay?.({boxes:document.getElementById('boxes').checked?people.map(person=>({score:person.score,bbox:[person.bbox[0]/video.videoWidth,person.bbox[1]/video.videoHeight,person.bbox[2]/video.videoWidth,person.bbox[3]/video.videoHeight]})):[],labels:document.getElementById('names').checked,crosshair:document.getElementById('crosshair-toggle').checked,circle:document.getElementById('circle-toggle').checked,radius:radius/Math.min(video.videoWidth,video.videoHeight),target:target?[target[0]/video.videoWidth,target[1]/video.videoHeight]:null});
+   detectionStatus.textContent=people.length+' detection'+(people.length===1?'':'s')+' · '+(target?'Target marked':'No target in circle');
   }
   if(detectionActive&&generation===detectionGeneration)detectionTimer=setTimeout(()=>detectFrame(generation),160);
  }catch(error){
@@ -138,23 +152,29 @@ async function detectFrame(generation){
 async function connectDetection(){
  if(detectionActive||connectButton.textContent==='CANCEL CONNECTION'){disconnectDetection();return;}
  if(!captureStream){detectionStatus.textContent='Start a capture before connecting detection.';return;}
- if(!navigator.onLine&&!detector){detectionStatus.textContent='You appear offline. Reconnect to the internet, then retry.';return;}
  const generation=++detectionGeneration;
  connectButton.textContent='CANCEL CONNECTION';
- detectionStatus.textContent='Loading detection model. Internet is required for the first connection…';
+ detectionStatus.textContent='Loading your bundled ONNX model…';
  try{
   await loadDetector();
   if(generation!==detectionGeneration||!captureStream)return;
   detectionActive=true;connectButton.textContent='DISCONNECT DETECTION';
-  detectionStatus.textContent='Detection connected. Looking for visible people…';
+  detectionStatus.textContent='Detection connected. Looking for model targets…';
   detectFrame(generation);
  }catch(error){
   if(generation!==detectionGeneration)return;
-  disconnectDetection();detectionStatus.textContent='Could not load the model. Check internet access to storage.googleapis.com and try again.';
+  disconnectDetection();detectionStatus.textContent='Could not load the bundled model. Check the app files or download the app again.';
  }
 }
 connectButton.addEventListener('click',connectDetection);
 const networkState=document.getElementById('network-state');
-function updateNetwork(){networkState.textContent=navigator.onLine?'Internet available':'Offline';networkState.classList.toggle('offline',!navigator.onLine);}
-window.addEventListener('online',updateNetwork);window.addEventListener('offline',updateNetwork);updateNetwork();
+networkState.textContent='Offline model ready';
+async function startScreenOverlay(){
+ const status=document.getElementById('overlay-status');
+ if(!document.getElementById('screen-overlay').checked||!capturedSource){window.capture?.stopOverlay?.();return;}
+ try{const result=await window.capture?.startOverlay?.(capturedSource.id);status.textContent=result?.message||'Screen overlay is available in the Windows desktop app.';}
+ catch{status.textContent='Overlay could not start. Capture preview is still available.';}
+}
+document.getElementById('screen-overlay').addEventListener('change',startScreenOverlay);
+window.capture?.onOverlayStatus?.(message=>{document.getElementById('overlay-status').textContent=message;});
  document.addEventListener('keydown'   ,event=>{if(event.key==='Escape'){if(!picker.hidden){picker.hidden=true;return;}const inTools=!document.getElementById('esp').hidden||!document.getElementById('aim').hidden;if(!inTools)stopCapture();show(inTools?'play':'home');}});

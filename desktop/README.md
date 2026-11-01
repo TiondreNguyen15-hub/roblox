@@ -1,50 +1,40 @@
 # Blue Menu — Windows desktop app
 
-A standalone black and blue menu with rounded buttons. Play opens a dashboard with ESP, Aim, and an application picker. No Roblox game data is connected. Settings saves the reduce animations preference locally. Credits, Back, and Escape provide navigation.
+Black and blue desktop workspace with rounded panels, capture preview, ESP controls, and an Aim target marker.
 
-## Run the Windows app
+## Run
 
-Download `Blue-Menu-Windows.exe` and double-click it. It is a portable app for Windows x64 and does not require installation. The app is unsigned.
+Download `downloads/Blue-Menu-Windows.exe` from the repository and open it on Windows x64. The portable app is unsigned. Press Play, Start Capture, then select an application window. Detection starts automatically using the bundled uploaded ONNX model; no internet connection is needed.
+
+ESP draws model detections in the capture preview and, when Screen Overlay is enabled, in a transparent click-through window over the selected application. The overlay follows the selected window while it is in the foreground and hides when the window is minimized or loses focus. Return to the captured application after configuring the menu to see the overlay. Stop Capture or return to Main Menu to stop detection, remove the overlay, and release the video stream. Disconnect Detection clears boxes and markers while leaving the preview available.
+
+Aim marks the detection nearest the image center inside the configured circle. Target Marker, Crosshair, Show Circle, and Circle Size control the preview and screen overlay. This is a target marker, as requested; the app does not move the mouse or control gameplay. ESP Names shows the model class and confidence, not actual usernames. Distance is only a sample preview; the model does not output world distance. The model's Enemy class does not verify team membership.
+
+## Overlay requirements
+
+Windows PowerShell is used to query the selected window's visible bounds and foreground status. The bundled `track-window.ps1` must be allowed by the machine's script policy; the app does not bypass it. If tracking fails, a status message appears and capture preview remains available. The overlay uses DPI conversion and excludes itself from capture. Exclusive fullscreen applications and protected windows may not support desktop overlays; test in windowed or borderless mode. Windows alignment and multi-monitor behavior have not been verified in this Linux environment.
+
+## Model
+
+`models/roblox.onnx` is the user-uploaded model. See `models/README.md` for its original filename, SHA-256, tensor shapes, metadata, and declared AGPL-3.0 license. ONNX Runtime Web, its WASM binary, and the model are bundled locally. Video is processed locally and is not uploaded. Inputs use 640×640 RGB letterboxing; outputs use confidence filtering and non-maximum suppression.
 
 ## Develop
 
-Use Node.js 22 or newer. From this directory:
+Use Node.js 22 or newer. From `desktop`:
 
 ```sh
 npm ci
 npm start
-```
-
-Build a Windows portable executable:
-
-```sh
+npm test
 npm run build -- --win --x64
 ```
 
-Output: `dist/Blue Menu 1.0.0.exe`.
+Output: `dist/Blue Menu 1.0.0.exe`. The model runtime and WASM assets are retained under `vendor`. The tracking script is copied into the packaged resources directory. English Electron locale resources are packaged to keep the portable download small.
 
-The interface was checked in Chromium for Play, Credits, Back, Escape, saved settings, and a narrow window. Windows executable startup must be verified on Windows.
+## Verified
 
-ESP and Aim are visual menu sections with a local preview only. ESP includes boxes, names, and distance toggles. Aim includes crosshair and circle toggles plus a circle size slider. Preview preferences are saved locally.
-
-## Application capture
-
-Press Play, then Choose Application. The Windows app lists capturable open application windows on the computer where it is running. Select a window to start a local video preview. Stop Capture or return to the main menu to stop it. Capture continues while visiting ESP and Aim. Refresh Windows updates the list; closed or protected windows may not be capturable. No audio is captured and no video is recorded or uploaded.
-
-Window selection is implemented using Electron desktopCapturer with a sandboxed preload bridge. Browser checks used simulated window listings and a generated video stream to verify navigation, capture start/stop, and failures. Native application enumeration and capture require testing on Windows.
-
-## Visible-person detection
-
-Start Capture beside ESP or Aim, choose an application, then press Connect Detection below Settings on the dashboard. The app loads the COCO-SSD lite MobileNet model from `https://storage.googleapis.com` and runs TensorFlow.js inference locally on the captured video. Internet access is needed to load the model; browser caching is not guaranteed. Video is not uploaded for inference. Disconnect Detection, Stop Capture, or return to the main menu to clear the boxes and stop detection.
-
-Blue boxes appear in the app's capture preview for visible objects classified as people with confidence of at least 55%. ESP's Boxes and Names controls apply to those detections; labels show a generic Person and confidence, not usernames. Actual distance is unavailable. The model is trained on everyday images and can miss or misclassify stylized game characters. It cannot identify hidden players. Aim remains a visual preview and does not move the mouse or control games.
-
-Validation: the packaged TensorFlow runtime executed tensor operations. Controlled browser tests verified person filtering, canvas box rendering, ESP toggles, disconnect/clear, model-load failures, cancellation, and capture cleanup using simulated predictions. The cloud policy returned HTTP 403 for the model endpoint, so real-model accuracy and Windows capture still require testing on the target PC. The app displays a load error and permits retry if model loading fails.
-
-## Organized workspace and internet status
-
-Play opens a workspace with a sidebar for Overview, ESP, Aim, and Settings. ESP and Aim have separate configuration cards; the application preview has its own capture panel. The AI Connection card sits below Settings and remains available while configuring tools. Main Menu stops capture and detection.
-
-The connection card shows the browser's online/offline network indication, which does not guarantee the model host is reachable. Connect Detection checks for an active capture and an online network before downloading the official model. Download failures remain visible and the same button allows retry. The model connection is for visible-person inference; this app does not include an external chat AI provider, web search, or AI-to-AI messaging.
-
-UI code is separated into `index.html`, `styles.css`, and `renderer.js`. Navigation, active sidebar state, simulated detection, capture cleanup, offline feedback, and layouts at 360, 700, and 1000 pixels were checked in Chromium. Native Windows capture and real-model detection still require testing on the target PC.
+- ONNX structural validation and CPU inference on a blank frame: passed, finite output `[1,5,8400]`.
+- Actual browser WASM inference with the uploaded model: passed; blank video produced zero detections.
+- Three decoder checks: letterbox reversal/NMS, invalid and low-confidence filtering, and boundary clipping.
+- Browser checks with controlled predictions: automatic capture-to-detection startup, nearest-target selection, target toggle, overlay lifecycle, normalized overlay rendering, and capture cleanup.
+- Native Windows capture/tracking, fullscreen compatibility, DPI alignment, and gameplay accuracy still require testing on the target PC. Blank-frame inference verifies execution, not detection accuracy.

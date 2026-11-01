@@ -6,7 +6,8 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder"
+    "build": "electron-builder",
+    "test": "node detector.test.js"
   },
   "build": {
     "appId": "com.robloxmenu.blue",
@@ -15,9 +16,14 @@
       "main.js",
       "index.html",
       "preload.js",
-      "vendor/**",
       "styles.css",
-      "renderer.js"
+      "renderer.js",
+      "vendor/ort*",
+      "vendor/ONNX*",
+      "models/**",
+      "detector.js",
+      "overlay.html",
+      "overlay.js"
     ],
     "directories": {
       "output": "dist"
@@ -32,12 +38,19 @@
     },
     "mac": {
       "target": "zip"
-    }
+    },
+    "extraResources": [
+      "track-window.ps1"
+    ],
+    "electronLanguages": [
+      "en-US"
+    ]
   },
   "devDependencies": {
+    "@tensorflow-models/coco-ssd": "2.2.3",
+    "@tensorflow/tfjs": "4.22.0",
     "electron": "40.10.6",
     "electron-builder": "26.18.0",
-    "@tensorflow-models/coco-ssd": "2.2.3",
-    "@tensorflow/tfjs": "4.22.0"
+    "onnxruntime-web": "1.22.0"
   }
 }
