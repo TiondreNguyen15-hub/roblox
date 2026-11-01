@@ -33,4 +33,10 @@ Press Play, then Choose Application. The Windows app lists capturable open appli
 
 Window selection is implemented using Electron desktopCapturer with a sandboxed preload bridge. Browser checks used simulated window listings and a generated video stream to verify navigation, capture start/stop, and failures. Native application enumeration and capture require testing on Windows.
 
-Actual player detection and boxes around players in captured games are not implemented. The ESP box remains a labeled visual preview; connecting game-position data or a suitable detection system is separate work.
+## Visible-person detection
+
+Start Capture beside ESP or Aim, choose an application, then press Connect Detection below Settings on the dashboard. The app loads the COCO-SSD lite MobileNet model from `https://storage.googleapis.com` and runs TensorFlow.js inference locally on the captured video. Internet access is needed to load the model; browser caching is not guaranteed. Video is not uploaded for inference. Disconnect Detection, Stop Capture, or return to the main menu to clear the boxes and stop detection.
+
+Blue boxes appear in the app's capture preview for visible objects classified as people with confidence of at least 55%. ESP's Boxes and Names controls apply to those detections; labels show a generic Person and confidence, not usernames. Actual distance is unavailable. The model is trained on everyday images and can miss or misclassify stylized game characters. It cannot identify hidden players. Aim remains a visual preview and does not move the mouse or control games.
+
+Validation: the packaged TensorFlow runtime executed tensor operations. Controlled browser tests verified person filtering, canvas box rendering, ESP toggles, disconnect/clear, model-load failures, cancellation, and capture cleanup using simulated predictions. The cloud policy returned HTTP 403 for the model endpoint, so real-model accuracy and Windows capture still require testing on the target PC. The app displays a load error and permits retry if model loading fails.

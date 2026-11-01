@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; media-src blob:">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; media-src blob:; connect-src https://storage.googleapis.com; worker-src blob:">
 <title>Blue Menu</title>
 <style>
 :root{color-scheme:dark;--blue:#2788ff;--glow:rgba(39,136,255,.16)}
@@ -14,7 +14,7 @@ header{text-align:center}h1{font-size:29px;letter-spacing:2px;margin:0 0 10px}p{
 button{font:600 14px Segoe UI,Arial,sans-serif;color:#f4f8ff;width:100%;padding:18px;border:1px solid #26394f;border-radius:15px;background:#172337;cursor:pointer;transition:background .16s,transform .16s,box-shadow .16s;margin:0 0 12px;letter-spacing:1px}
 button:hover{background:#22354e;transform:translateY(-2px)}button:focus-visible,input:focus-visible{outline:3px solid #98c9ff;outline-offset:4px}button.primary{background:var(--blue);border-color:var(--blue);box-shadow:0 8px 25px var(--glow)}button.primary:hover{filter:brightness(1.12)}button:last-child{margin-bottom:0}[hidden]{display:none!important}.detail{min-height:110px;text-align:center;padding:12px 0}.setting{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:20px 0 34px;color:#c4d2e5;font-size:14px}input{accent-color:var(--blue);width:22px;height:22px;cursor:pointer}.status{display:inline-block;color:#71b2ff;background:#102944;border:1px solid #244e78;border-radius:30px;padding:7px 13px;font-size:11px;letter-spacing:1px;margin-bottom:22px}
 .demo-note{text-align:center;margin:0 0 14px;color:#71b2ff;font-size:12px}.preview{height:170px;position:relative;display:grid;place-items:center;background:#090f19;border:1px solid #22364e;border-radius:16px;margin-bottom:12px;overflow:hidden}.option{display:flex;justify-content:space-between;align-items:center;min-height:44px;color:#c4d2e5;font-size:14px;gap:12px}.option input{flex-shrink:0}section>.primary{margin-top:16px}#target{height:95px;width:60px;border:2px solid #2788ff;position:relative;background:#2788ff12}#target-name,#target-distance{position:absolute;left:50%;transform:translateX(-50%);font-size:10px;white-space:nowrap;color:#8ac0ff}#target-name{top:-20px}#target-distance{bottom:-20px}#aim-circle{width:100px;height:100px;border:1px solid #2788ff;border-radius:50%;position:absolute}#crosshair{font-size:30px;color:#85bdff;font-weight:300;line-height:1}#circle-size{width:100%;height:24px;margin:0 0 16px}output{color:#71b2ff}
-nav{display:flex;gap:12px}nav button{margin-bottom:12px}#app-list{max-height:200px;overflow:auto}#app-list button{text-align:left;overflow-wrap:anywhere;font-size:12px;letter-spacing:0;padding:12px}#capture-video{width:100%;max-height:260px;display:block;background:#000;border-radius:12px;margin:12px 0}#capture-status{margin:16px 0;font-size:12px}button:disabled{opacity:.5;cursor:wait}
+nav{display:flex;gap:12px}nav>div{flex:1;min-width:0}nav button{margin-bottom:12px}nav .start-capture{font-size:10px;padding:12px 4px;letter-spacing:0}#capture-stage{position:relative;margin:12px 0}#detection-overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}#detection-status{font-size:12px;margin:8px 0 20px}#app-list{max-height:200px;overflow:auto}#app-list button{text-align:left;overflow-wrap:anywhere;font-size:12px;letter-spacing:0;padding:12px}#capture-video{width:100%;display:block;background:#000;border-radius:12px;margin:0}#capture-status{margin:16px 0;font-size:12px}button:disabled{opacity:.5;cursor:wait}
 @keyframes enter{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}body.reduced *{animation:none!important;transition:none!important}
 </style>
 </head>
@@ -23,10 +23,10 @@ nav{display:flex;gap:12px}nav button{margin-bottom:12px}#app-list{max-height:200
 <header><div class="mark" aria-hidden="true">◇</div><h1 id="title">BLUE MENU</h1><p id="subtitle">Ready when you are.</p></header>
 <section id="home" aria-label="Main menu"><button class="primary" data-view="play">PLAY &nbsp; →</button><button data-view="settings">SETTINGS</button><button data-view="credits">CREDITS</button></section>
 <section id="play" hidden aria-label="Dashboard">
-<nav><button data-view="esp">ESP</button><button data-view="aim">AIM</button></nav>
+<nav aria-label="Tools"><div><button data-view="esp">ESP</button><button class="start-capture">START CAPTURE</button></div><div><button data-view="aim">AIM</button><button class="start-capture">START CAPTURE</button></div></nav><button data-view="settings">SETTINGS</button><button id="connect-detection">CONNECT DETECTION</button><p id="detection-status" role="status">Start a capture, then connect visible-person detection.</p>
 <button id="choose-app" class="primary">CHOOSE APPLICATION</button>
 <div id="picker" hidden><p>Choose an open application window.</p><div id="app-list"></div><button id="refresh-apps">REFRESH WINDOWS</button><button id="cancel-picker">CANCEL</button></div>
-<div id="capture-display" hidden><video id="capture-video" autoplay muted playsinline aria-label="Selected application capture"></video><button id="stop-capture">STOP CAPTURE</button></div>
+<div id="capture-display" hidden><div id="capture-stage"><video id="capture-video" autoplay muted playsinline aria-label="Selected application capture"></video><canvas id="detection-overlay" aria-label="Detected people"></canvas></div><button id="stop-capture">STOP CAPTURE</button></div>
 <p id="capture-status" role="status">Choose an application to preview its window.</p>
 <button data-view="home">BACK TO MENU</button></section>
 <section id="settings" hidden aria-label="Settings"><label class="setting" for="motion">Reduce animations<input id="motion" type="checkbox"></label><p>Your preference is saved on this computer.</p><button class="primary" data-view="home">BACK</button></section>
@@ -48,6 +48,8 @@ nav{display:flex;gap:12px}nav button{margin-bottom:12px}#app-list{max-height:200
 <section id="credits" hidden aria-label="Credits"><div class="detail"><p>Blue Menu<br>A black and blue desktop experience.<br>Built with Electron.</p></div><button class="primary" data-view="home">BACK</button></section>
 <footer class="eyebrow">YOUR NEXT ADVENTURE</footer>
 </main>
+<script src="vendor/tf.min.js"></script>
+<script src="vendor/coco-ssd.min.js"></script>
 <script>
 const views=['home','play','settings','credits','esp','aim'];
 const headings={esp:['ESP','Customize your visual preview.'],aim:['AIM','Customize your crosshair preview.'],home:['BLUE MENU','Ready when you are.'],play:['DASHBOARD','Choose a window. Set up your preview.'],settings:['SETTINGS','Make yourself comfortable.'],credits:['CREDITS','Thanks for stopping by.']};
@@ -85,6 +87,7 @@ const picker=document.getElementById('picker');
 const captureStatus=document.getElementById('capture-status');
 const video=document.getElementById('capture-video');
 function stopCapture(){
+ disconnectDetection();
  if(captureStream){captureStream.getTracks().forEach(track=>track.stop());captureStream=null;}
  video.srcObject=null;
  document.getElementById('capture-display').hidden=true;
@@ -103,7 +106,7 @@ async function captureWindow(source){
   await video.play();
   captureStream.getVideoTracks()[0].addEventListener('ended',stopCapture,{once:true});
   picker.hidden=true;document.getElementById('capture-display').hidden=false;
-  captureStatus.textContent='Capturing '+source.name+'. Player detection is not connected.';
+  captureStatus.textContent='Capturing '+source.name+'. Ready to connect visible-person detection.';
  }catch(error){
   if(pendingStream)pendingStream.getTracks().forEach(track=>track.stop());
   captureStream=null;video.srcObject=null;
@@ -127,12 +130,77 @@ async function listWindows(){
  finally{refresh.disabled=false;}
 }
  document.getElementById('choose-app').addEventListener('click',listWindows);
+ document.querySelectorAll('.start-capture').forEach(button=>button.addEventListener('click',listWindows));
  document.getElementById('refresh-apps').addEventListener('click',listWindows);
  document.getElementById('cancel-picker').addEventListener('click',()=>{picker.hidden=true;});
  document.getElementById('stop-capture').addEventListener('click',stopCapture);
  window.addEventListener('beforeunload',stopCapture);
  document.querySelector('#play [data-view="home"]').addEventListener('click',()=>{stopCapture();picker.hidden=true;});
- document.addEventListener('keydown'  ,event=>{if(event.key==='Escape'){if(!picker.hidden){picker.hidden=true;return;}const inTools=!document.getElementById('esp').hidden||!document.getElementById('aim').hidden;if(!inTools)stopCapture();show(inTools?'play':'home');}});
+ const detectionStatus=document.getElementById('detection-status');
+const connectButton=document.getElementById('connect-detection');
+const overlay=document.getElementById('detection-overlay');
+const context=overlay.getContext('2d');
+let detector=null, modelLoading=null, detectionActive=false, detectionTimer=null, detectionGeneration=0;
+function clearDetections(){context.clearRect(0,0,overlay.width,overlay.height);}
+function disconnectDetection(){
+ detectionActive=false;detectionGeneration++;clearTimeout(detectionTimer);clearDetections();
+ connectButton.textContent='CONNECT DETECTION';connectButton.disabled=false;
+ detectionStatus.textContent='Detection disconnected.';
+}
+async function loadDetector(){
+ if(detector)return detector;
+ if(!modelLoading){
+  modelLoading=(async()=>{
+   if(!window.tf||!window.cocoSsd)throw new Error('Missing detector libraries');
+   await tf.ready();
+   return cocoSsd.load({base:'lite_mobilenet_v2'});
+  })().then(model=>{detector=model;return model;}).finally(()=>{modelLoading=null;});
+ }
+ return modelLoading;
+}
+async function detectFrame(generation){
+ if(!detectionActive||generation!==detectionGeneration||!captureStream)return;
+ try{
+  if(video.readyState>=2 && video.videoWidth){
+   const predictions=await detector.detect(video,20,0.55);
+   if(!detectionActive||generation!==detectionGeneration)return;
+   overlay.width=video.videoWidth;overlay.height=video.videoHeight;
+   const people=predictions.filter(prediction=>prediction.class==='person'&&prediction.score>=0.55);
+   context.strokeStyle='#2788ff';context.fillStyle='#2788ff';
+   context.lineWidth=Math.max(2,overlay.width/500);context.font=`${Math.max(14,overlay.width/65)}px Arial`;
+   if(document.getElementById('boxes').checked){
+    for(const person of people){
+     const [x,y,width,height]=person.bbox;
+     context.strokeRect(x,y,width,height);
+     if(document.getElementById('names').checked)context.fillText('Person '+Math.round(person.score*100)+'%',Math.max(0,x),Math.max(18,y-5));
+    }
+   }
+   detectionStatus.textContent=people.length+' visible person'+(people.length===1?'':'s')+' detected. Demo distance is not applied to capture.';
+  }
+  if(detectionActive&&generation===detectionGeneration)detectionTimer=setTimeout(()=>detectFrame(generation),160);
+ }catch(error){
+  if(generation!==detectionGeneration)return;
+  disconnectDetection();detectionStatus.textContent='Detection failed. Try reconnecting or selecting a different window.';
+ }
+}
+connectButton.addEventListener('click',async()=>{
+ if(detectionActive||connectButton.textContent==='CANCEL CONNECTION'){disconnectDetection();return;}
+ if(!captureStream){detectionStatus.textContent='Start a capture before connecting detection.';return;}
+ const generation=++detectionGeneration;
+ connectButton.textContent='CANCEL CONNECTION';
+ detectionStatus.textContent='Loading detection model. Internet is required for the first connection…';
+ try{
+  await loadDetector();
+  if(generation!==detectionGeneration||!captureStream)return;
+  detectionActive=true;connectButton.textContent='DISCONNECT DETECTION';
+  detectionStatus.textContent='Detection connected. Looking for visible people…';
+  detectFrame(generation);
+ }catch(error){
+  if(generation!==detectionGeneration)return;
+  disconnectDetection();detectionStatus.textContent='Could not load the model. Check internet access to storage.googleapis.com and try again.';
+ }
+});
+ document.addEventListener('keydown'   ,event=>{if(event.key==='Escape'){if(!picker.hidden){picker.hidden=true;return;}const inTools=!document.getElementById('esp').hidden||!document.getElementById('aim').hidden;if(!inTools)stopCapture();show(inTools?'play':'home');}});
 </script>
 </body>
 </html>

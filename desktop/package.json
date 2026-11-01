@@ -14,7 +14,8 @@
     "files": [
       "main.js",
       "index.html",
-      "preload.js"
+      "preload.js",
+      "vendor/**"
     ],
     "directories": {
       "output": "dist"
@@ -33,6 +34,8 @@
   },
   "devDependencies": {
     "electron": "40.10.6",
-    "electron-builder": "26.18.0"
+    "electron-builder": "26.18.0",
+    "@tensorflow-models/coco-ssd": "2.2.3",
+    "@tensorflow/tfjs": "4.22.0"
   }
 }
