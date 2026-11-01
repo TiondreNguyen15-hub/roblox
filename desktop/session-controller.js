@@ -10,7 +10,7 @@ class SessionController{
  async launch(profiles){
   this.configure(profiles);
   if(this.armed){this.state(this.active?'connected':'waiting-game',this.active?'System already running':'LAUNCH is already armed');return;}
-  this.armed=true;const generation=++this.generation;this.state('initializing','Loading saved authorization…');
+  this.armed=true;const generation=++this.generation;this.state('initializing','Initializing private local backend…');
   if(!this.api.connection)await this.api.restore();
   if(generation!==this.generation||!this.armed)return;
   this.startIfReady();
@@ -24,13 +24,14 @@ class SessionController{
  startIfReady(){
   if(!this.armed||this.polling)return;
   if(this.running!==true){this.state('waiting-game','Waiting for Roblox to launch');return;}
-  if(!this.api.connection){this.state('pair-required','Pair your authorized game once under Profile & secure pairing, then LAUNCH reconnects automatically');return;}
-  this.polling=true;const generation=this.generation;this.state('connecting','Roblox detected · connecting to authorized API');
+  if(!this.api.connection){this.state('backend-unavailable','Local backend unavailable · STOP and relaunch');return;}
+  this.polling=true;const generation=this.generation;this.state('initializing','Roblox detected · checking supported local integrations');
   this.api.start(event=>{
    if(!this.armed||generation!==this.generation||!this.polling)return;
-   if(event.type!=='data'){this.active=null;this.cleanup();this.state('reconnecting',event.message||'API unavailable · retrying');return;}
+   if(event.type==='capability'){this.active=null;this.cleanup();this.state('integration-required',event.message);return;}
+   if(event.type!=='data'){this.active=null;this.cleanup();this.state(event.retrying?'reconnecting':'error',event.message||'Local integration unavailable · STOP and relaunch');return;}
    const packet=event.packet;
-   if(packet?.status==='waiting'){this.active=null;this.cleanup();this.state('waiting-data','Connected relay · waiting for fresh game data');return;}
+   if(packet?.status==='waiting'){this.active=null;this.cleanup();this.state('waiting-data','Local integration waiting for authorized game data');return;}
    if(!valid(packet)){this.active=null;this.cleanup();this.state('error','Invalid API response · ESP not started');return;}
    const profile=this.profiles.find(p=>p.placeId===packet.game.placeId);
    if(!profile){this.active=null;this.cleanup();this.state('unsupported',`Unsupported game: ${packet.game.name||'Name unavailable'} · Place ${packet.game.placeId}`);return;}
@@ -41,10 +42,9 @@ class SessionController{
    }
    this.state('connected',`Connected · ${packet.game.name||'Name unavailable'} · Place ${packet.game.placeId}`);
    this.send(event);
-  });
+  },this.profiles);
  }
  disconnect(){this.generation++;this.polling=false;this.api.stop();this.active=null;this.cleanup();this.send({type:'unload',message:'Game session stopped'});}
- reauthorize(){this.disconnect();if(this.armed)this.startIfReady();}
  stop(){this.armed=false;this.disconnect();this.state('idle','Idle · press LAUNCH');}
 }
 module.exports=SessionController;

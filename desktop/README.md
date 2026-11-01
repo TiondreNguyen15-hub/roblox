@@ -1,34 +1,39 @@
-# Blue Menu — ESP and Aimbot desktop workspace
+# Blue Menu — local backend edition
 
-A dedicated two-tab Windows app retaining the black/blue branding, rounded panels, authorized Player Data API, and configurable Roblox profiles. The only main tabs are **ESP** and **Aimbot**. No capture preview, local object detector, fake player sample, or injected game access is used.
+A two-tab ESP/Aimbot Windows interface with black/blue styling, game profiles, LAUNCH/STOP lifecycle control, and a private local backend. The desktop no longer has HTTPS relay URLs, pairing codes, Pair/Forget buttons, credential restoration, remote HTTP polling, or remote-server configuration screens.
 
-## First-time setup
+## Important Roblox limitation
 
-Follow [the Render and published Roblox setup guide](../relay/README.md). The relay is configured for Universe ID `10353139110`; the desktop profile defaults to Place ID `79862723087324`. Verify their relationship in Creator Hub. Deploy the relay, configure the server-side Creator Hub secret/HTTP settings, and publish the game integration before expecting live data.
+The normal published Roblox desktop client does **not** provide a supported local player-data API to another application. Live Roblox game servers also cannot send HTTP directly to a player's localhost. Removing the relay does not create local access to private players, camera data, health, or team information.
 
-In the desktop sidebar, expand **Profile & secure pairing**, enter the HTTPS relay and private pairing code shown in your authorized game client, then click **Pair game**. This is a one-time authorization step, not a per-module setup. Pairing credentials are encrypted by the native main process using Windows OS-backed Electron safeStorage, never localStorage. Profile/feature preferences remain local and existing preference keys are migrated where relevant.
+Accordingly, this build detects the Roblox process but reports **INTEGRATION REQUIRED**: an authorized external game-side integration is necessary to identify the current Place ID and obtain live player data. It does not claim a connected game, fabricate a Place ID match, draw fake players, scan Roblox memory/logs, inject code, or bypass anti-cheat. The configured Place ID `79862723087324` is a preference, not a detected game identity.
 
-## LAUNCH and STOP
+**Live Roblox ESP and target selection are unavailable in this local-only build.** The visualization and filtering modules remain functional for a future genuinely supported, authorized data adapter, and are regression-tested with explicitly labeled fixtures. No test adapter is bundled as a live integration.
 
-**LAUNCH** arms one native SessionController. It waits for the Roblox process, restores the saved paired credential, polls the authorized API, validates the response, identifies the Place ID, loads the matched profile, and starts visualization/radar. If Roblox opens later, it starts automatically while armed. Game exit aborts polling and clears the current view; reopening starts it again. A different supported Place ID/job unloads the previous profile before loading the next. Unsupported places, unavailable process detection, invalid API responses, missing pairing, and network failures have explicit statuses.
+## Local security and lifecycle
 
-**STOP** disarms auto-start, aborts the in-flight API request, cancels polling and animation frames, clears player/target/map state, and returns the interface to idle. Late results cannot re-enable it. The saved pairing is retained for the next LAUNCH. Use **Forget pairing** to revoke/delete authorization instead. Passive process monitoring remains active so the app can report launch/exit status; it does not start an integration after manual STOP.
+Renderer → sandboxed preload → Electron main IPC → LocalBackend → trusted bundled adapter.
 
-Electron's single-instance lock prevents duplicate app processes; the controller additionally prevents duplicate integration/poll loops. Closing the app stops the controller and process monitor. No gameplay input, memory reading, anti-cheat bypass, or third-party game integration is implemented.
+No local HTTP/WebSocket server or TCP port is opened. The renderer has no Node access, context isolation and sandboxing remain enabled, and IPC accepts only the main window's top-level frame. The page's default-deny CSP does not allow network connections. No IPC method accepts arbitrary player packets from other processes. Only deliberately bundled native adapters may emit data to the controller.
 
-## ESP
+LAUNCH initializes one local backend, waits for the Windows Roblox process, checks the adapter's capabilities, and starts ESP/radar only if a supported authorized adapter supplies validated data for a configured profile. The current Roblox adapter emits only the explicit external-integration requirement. It never emits player data.
 
-All positions/names/health/team/skeleton data come from the paired server feed. Camera projection is supplied by the authorized viewing client. Controls include visualization enable/disable, boxes, names, health bars, distance, team IDs, skeleton, radar enable/range, camera-relative radar or world X/Z map, and color. The map plots actual horizontal player positions; it does not invent terrain. Skeleton availability depends on the game publisher's StreamSkeleton setting. Connected count includes loading players even when they have no drawable character yet.
+STOP disarms auto-start, aborts local initialization, disposes active adapter resources, cancels animation frames, releases canvas buffers, clears target/player state, and returns to idle. Generation guards reject late callbacks. The passive process monitor remains available to report Roblox launch/exit without reopening a stopped session. Game exit unloads active integration state; if armed, reopening checks capabilities again. Single-instance locking and controller guards prevent duplicate integrations.
 
-Nothing is drawn while idle, unsupported, disconnected, or stale. Canvases are updated at up to 30 Hz from the latest HTTP snapshot, with no FPS or latency guarantee; the publisher defaults to 2 Hz. Labels and geometry use the actual game camera's viewport/FOV. Near-plane-crossing boxes are deliberately hidden. UI rendering is not a transparent overlay over the game window.
+## Controls
 
-## Aimbot tab: authorized target selection
+- **ESP / Aimbot**: existing feature controls and saved preferences are preserved. Aimbot remains an authorized target selector/marker, not mouse movement or firing.
+- **LAUNCH / STOP**: actual native backend control, including when no supported data integration exists.
+- **Game profile & preferences**: configure Place ID/name, save profile settings, and reduce motion. No remote connection setup is present.
+- The radar/map and canvases stay empty when no authorized feed is available. Names, health, skeletons, distance, teams, and target results are never invented.
 
-This tab provides an **enable/disable target selector and visual marker**, not automatic mouse movement or firing. Priority can be closest to crosshair, closest in world, or lowest health ratio. It supports center/head selection (head falls back to root if absent), same-team exclusion, crosshair/circle visibility, circle diameter in camera pixels, and maximum world distance. Dead, offscreen, behind-camera, same-team (when configured), and out-of-range candidates are rejected. A disabled selector produces no selected target. Only validated, profile-matched server data is considered.
+## Existing external source
 
-## Development
+The repository's `relay`, Render configuration, and game-side HTTP bridge are preserved as optional/reference source so working code is not destroyed. They are **not invoked, configured, connected, or packaged by this desktop build**. The previous desktop remote client and pairing IPC are removed. An old encrypted `player-api.enc` file from earlier versions is not read or used; previous remote tokens are not revoked over the network by this local-only app. The old relay's tokens expire according to its existing policy.
 
-Node.js 22+:
+Supporting published Roblox through that external architecture again would require a deliberate authorized integration and appropriate secure setup; this version does not secretly reconnect to it. Roblox's in-game `game-tracker` visualization can still be installed in your own experience independently of this desktop app.
+
+## Development and modular adapters
 
 ```sh
 cd desktop
@@ -38,14 +43,16 @@ npm start
 npm run build -- --win --x64
 ```
 
-Portable output: `dist/Blue Menu 1.0.0.exe`. It is unsigned. The package retains only Electron/build tools; TensorFlow, COCO-SSD, ONNX Runtime, model assets, capture IPC, window overlay tracking, old previews, and legacy renderer files were removed after eliminating their runtime references. The original uploaded model remains available in Git history; no inference model is needed by this version.
+The portable unsigned Windows output is `dist/Blue Menu 1.0.0.exe`. Only Electron and its builder remain as dependencies; removing the remote client required no new package. Existing encrypted credentials are not loaded. No model/capture dependency is reintroduced.
 
-Modules: `main`/`preload` enforce native IPC boundaries, `session-controller` owns lifecycle, `game-process` detects only the Windows RobloxPlayerBeta process name, `game-profiles` owns profile settings, `player-api` handles encrypted authorization/polling, `player-data` validates/projects real records, `target-selection` selects eligible markers, `visualization` owns canvases/animation cleanup, and `ui` binds controls.
+`LocalBackend` wraps a **trusted bundled** adapter implementing `start({signal, profiles, emit})`. It returns a cleanup function (or promise of one). Adapters must honor cancellation and emit either a truthful capability/status event or real authorized packets conforming to `player-data.js`. This is a code-level extension contract, not an open network ingestion API or arbitrary plugin loader. `SessionController` still validates data and game profiles before permitting rendering. Asynchronous initialization that finishes after STOP has its cleanup called immediately.
 
-## Tests and limits
+## Verification
 
-- `npm test`: actual API polling cancellation/late-response rejection and session lifecycle (LAUNCH/STOP, duplication, exit/reopen, switching, unsupported game, API recovery, canceled initialization, late packets, pairing prerequisite) and target selection/filtering.
-- `node ../relay/server.test.js`: authenticated relay protocol, pairing, viewer isolation, stale/replayed data, revocation, reconnection, expiration, and projection.
-- `python ui-workflow.test.py`: run a local static server first (`python -m http.server 8765 --bind 127.0.0.1` in desktop). Requires Python Playwright and Chromium at `/usr/bin/chromium`. This test exercises UI buttons against the actual backend SessionController with explicitly labeled API/process fixtures; it checks visualization/radar/target enablement, recovery, game transitions, STOP, late packets, and responsive widths. It is a development test, not packaged production code.
+- `npm test`: lifecycle/profile matching, target filtering, actual local-backend capability reporting, no fabricated packets, cancellation, cleanup, late data rejection, STOP/relaunch.
+- `python local-ui.test.py`: UI → actual SessionController → actual built-in LocalBackend → UI. No player fixtures are injected. Verifies removed remote controls, LAUNCH/process wait, truthful integration requirement, empty ESP/Aimbot, STOP/disarm/relaunch, buffer release.
+- `python ui-workflow.test.py`: retained visualization regression test through a separate explicit test adapter. Tests player rendering, target controls, switching, errors, and STOP with fixture packets; never described as live Roblox data.
 
-These tests passed in Linux. Native Windows process detection, OS credential storage, app startup, real Render deployment, published Roblox HTTP/camera data, and gameplay accuracy/performance still require live verification. No fixture data is present in production modules and no live connection is claimed before deployment and pairing.
+Browser tests require a local static server at port 8765 (`python -m http.server 8765 --bind 127.0.0.1` in desktop), Python Playwright, and Chromium at `/usr/bin/chromium`. These test-only servers are not part of production architecture.
+
+Tests passed on Linux. Native Windows startup/process querying and an actual Roblox client are not verified here. Published Roblox private data is intentionally unavailable through the default local adapter; this is a platform integration requirement, not a claim that an untested live connection exists.

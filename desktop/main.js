@@ -1,9 +1,9 @@
 const {app,BrowserWindow,ipcMain}=require('electron');
 const path=require('node:path');
-const PlayerApi=require('./player-api');
+const LocalBackend=require('./local-backend');
 const GameProcess=require('./game-process');
 const Controller=require('./session-controller');
-const api=new PlayerApi(),monitor=new GameProcess();
+const api=new LocalBackend(),monitor=new GameProcess();
 let window=null;
 const session=new Controller({api,send:event=>{if(window&&!window.isDestroyed())window.webContents.send('system:event',event);}});
 const trusted=event=>window&&!window.isDestroyed()&&event.sender===window.webContents&&event.senderFrame===window.webContents.mainFrame;
@@ -22,9 +22,6 @@ if(app.requestSingleInstanceLock()){
   ipcMain.handle('system:launch',async(event,profiles)=>{check(event);await session.launch(profiles);return true;});
   ipcMain.handle('system:stop',event=>{check(event);session.stop();return true;});
   ipcMain.handle('system:configure',(event,profiles)=>{check(event);session.configure(profiles);return true;});
-  ipcMain.handle('player-api:restore',async event=>{check(event);return api.connection?{url:api.connection.url}:api.restore();});
-  ipcMain.handle('player-api:pair',async(event,url,code)=>{check(event);if(typeof url!=='string'||url.length>2048||typeof code!=='string'||code.length>32)throw Error('Invalid pairing');const result=await api.pair(url,code);session.reauthorize();return result;});
-  ipcMain.handle('player-api:forget',async event=>{check(event);session.stop();await api.forget();return true;});
   open();app.on('activate',()=>{if(!window)open();});
  });
 }else app.quit();

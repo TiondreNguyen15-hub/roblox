@@ -1,3 +1,5 @@
+> Optional external integration reference. The current local-only desktop does not load or connect to this relay and has no pairing UI. This source is preserved for existing deployments; do not follow the historical desktop-pairing steps as instructions for the current app. See [the current desktop guide](../desktop/README.md).
+
 # Published Roblox → Render → Windows Player Data API
 
 This integration runs in published Roblox servers and the normal Roblox desktop client. Studio is not the transport: authorized game servers POST to a public HTTPS Render relay; the separate Windows application polls that relay using a paired viewer credential. No process injection, Roblox memory reading, localhost requests from live servers, or publisher secrets in the desktop app are required.

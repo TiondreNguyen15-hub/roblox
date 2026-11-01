@@ -1,3 +1,7 @@
+## Current desktop: local backend edition
+
+The latest desktop removes relay URLs and pairing controls and uses private Electron IPC. ESP/Aimbot tabs and real LAUNCH/STOP are retained. Published Roblox has no supported local player-data API: the app reports **integration required** and does not display fabricated live data. [Download Windows app](downloads/Blue-Menu-Windows.exe) · [Current guide](desktop/README.md). Older external integration source below is retained but is not used by this build.
+
 ## Current Windows application
 
 The desktop app now has only ESP and Aimbot tabs, authorized Player Data API visualization, and real LAUNCH/STOP session control. [Download Windows app](downloads/Blue-Menu-Windows.exe) · [Desktop guide](desktop/README.md) · [Render/Roblox deployment](relay/README.md). Aimbot is an authorized target selector/marker, not automated gameplay input. Live game verification still requires deploying and pairing.
