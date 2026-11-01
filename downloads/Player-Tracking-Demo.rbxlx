@@ -1,0 +1,496 @@
+<?xml version='1.0' encoding='utf-8'?>
+<roblox version="4"><Item class="ReplicatedStorage" referent="RBX1"><Properties><string name="Name">ReplicatedStorage</string></Properties><Item class="Folder" referent="RBX2"><Properties><string name="Name">PlayerTracking</string></Properties><Item class="ModuleScript" referent="RBX3"><Properties><string name="Name">Config</string><ProtectedString name="Source">-- Server-owned settings. Add production viewers explicitly; Studio is allowed.
+return {
+	AllowAllViewers = false,
+	AllowedUserIds = {}, -- Example: {12345678, 87654321}
+	SnapshotHz = 10,
+	StreamSkeleton = true,
+	MaxTrackedPlayers = 0, -- 0 streams all connected characters; set a cap if needed.
+	RenderHz = 30,
+	MaxRenderedPlayers = 32,
+	MaxDistance = 1500, -- studs
+	InterpolationDelay = 0.15,
+	StaleAfter = 2,
+	RadarRange = 300,
+	RadarSize = 180,
+	MenuKey = Enum.KeyCode.RightShift,
+	Colors = {
+		Box = Color3.fromRGB(39, 136, 255),
+		Text = Color3.fromRGB(235, 244, 255),
+		Skeleton = Color3.fromRGB(112, 255, 208),
+		Radar = Color3.fromRGB(39, 136, 255),
+	},
+	Defaults = {
+		Enabled = true, Boxes = true, Names = true, Distance = true,
+		Health = true, Team = true, Skeleton = false, Radar = true,
+		UseTeamColors = true, ShowTeammates = true,
+	},
+}
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX4"><Properties><string name="Name">Rig</string><ProtectedString name="Source">local Rig = {}
+Rig.Links = {
+	R15 = {
+		{"Head", "UpperTorso"}, {"UpperTorso", "LowerTorso"},
+		{"UpperTorso", "LeftUpperArm"}, {"LeftUpperArm", "LeftLowerArm"}, {"LeftLowerArm", "LeftHand"},
+		{"UpperTorso", "RightUpperArm"}, {"RightUpperArm", "RightLowerArm"}, {"RightLowerArm", "RightHand"},
+		{"LowerTorso", "LeftUpperLeg"}, {"LeftUpperLeg", "LeftLowerLeg"}, {"LeftLowerLeg", "LeftFoot"},
+		{"LowerTorso", "RightUpperLeg"}, {"RightUpperLeg", "RightLowerLeg"}, {"RightLowerLeg", "RightFoot"},
+	},
+	R6 = {
+		{"Head", "Torso"}, {"Torso", "Left Arm"}, {"Torso", "Right Arm"},
+		{"Torso", "Left Leg"}, {"Torso", "Right Leg"},
+	},
+}
+function Rig.Sample(character, rigType)
+	local joints = {}
+	for _, link in ipairs(Rig.Links[rigType] or {}) do
+		for _, name in ipairs(link) do
+			if not joints[name] then
+				local part = character:FindFirstChild(name)
+				if part and part:IsA("BasePart") then joints[name] = part.Position end
+			end
+		end
+	end
+	return joints
+end
+return Rig
+</ProtectedString></Properties></Item></Item></Item><Item class="ServerScriptService" referent="RBX5"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Folder" referent="RBX6"><Properties><string name="Name">PlayerTrackingServer</string></Properties><Item class="Script" referent="RBX7"><Properties><string name="Name">Tracking</string><ProtectedString name="Source">local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local shared = ReplicatedStorage:WaitForChild("PlayerTracking")
+local Config = require(shared:WaitForChild("Config"))
+local Rig = require(shared:WaitForChild("Rig"))
+local snapshot = Instance.new("RemoteEvent")
+snapshot.Name = "Snapshot"
+snapshot.Parent = shared
+
+local function allowed(player)
+	if RunService:IsStudio() or Config.AllowAllViewers then return true end
+	if game.CreatorType == Enum.CreatorType.User and player.UserId == game.CreatorId then return true end
+	return table.find(Config.AllowedUserIds, player.UserId) ~= nil
+end
+
+local sequence = 0
+local spawnSequence = 0
+local characters = {}
+Players.PlayerRemoving:Connect(function(player) characters[player.UserId] = nil end)
+local accumulator = 0
+RunService.Heartbeat:Connect(function(dt)
+	accumulator += dt
+	if accumulator &lt; 1 / math.clamp(Config.SnapshotHz, 1, 30) then return end
+	accumulator = 0
+	local viewers = {}
+	for _, player in ipairs(Players:GetPlayers()) do
+		local authorized = allowed(player)
+		player:SetAttribute("PlayerTrackingAllowed", authorized)
+		if authorized then table.insert(viewers, player) end
+	end
+	if #viewers == 0 then return end
+	local entities = {}
+	for _, player in ipairs(Players:GetPlayers()) do
+		if Config.MaxTrackedPlayers &gt; 0 and #entities &gt;= Config.MaxTrackedPlayers then break end
+		local character = player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if humanoid and root and root:IsA("BasePart") then
+			if not characters[player.UserId] or characters[player.UserId].character ~= character then
+				spawnSequence += 1
+				characters[player.UserId] = {character = character, generation = spawnSequence}
+			end
+			local box, size = character:GetBoundingBox()
+			local rigType = humanoid.RigType.Name
+			table.insert(entities, {
+				id = player.UserId, generation = characters[player.UserId].generation,
+				name = player.DisplayName, username = player.Name,
+				root = root.CFrame, boxOffset = root.CFrame:ToObjectSpace(box), size = size,
+				health = humanoid.Health, maxHealth = humanoid.MaxHealth,
+				team = player.Team and player.Team.Name or "Neutral",
+				teamColor = player.TeamColor.Color, neutral = player.Neutral,
+				rig = rigType,
+				joints = Config.StreamSkeleton and Rig.Sample(character, rigType) or {},
+			})
+		end
+	end
+	sequence += 1
+	local packet = {sequence = sequence, time = Workspace:GetServerTimeNow(), entities = entities}
+	for _, viewer in ipairs(viewers) do snapshot:FireClient(viewer, packet) end
+end)
+</ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX8"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX9"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="Folder" referent="RBX10"><Properties><string name="Name">PlayerTrackingClient</string></Properties><Item class="ModuleScript" referent="RBX11"><Properties><string name="Name">Menu</string><ProtectedString name="Source">local UserInputService = game:GetService("UserInputService")
+local UI = require(script.Parent.UI)
+local Menu = {}
+function Menu.new(parent, settings, config)
+	local self = {}
+	local button = UI.Make("TextButton", {
+		Text = "TRACKING · MENU", Font = Enum.Font.GothamBold, TextSize = 12,
+		Size = UDim2.fromOffset(170, 38), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1,-20,0,50),
+		BackgroundColor3 = Color3.fromRGB(20, 53, 90), TextColor3 = Color3.new(1,1,1), BorderSizePixel = 0,
+	}, parent)
+	UI.Make("UICorner", {CornerRadius = UDim.new(0,12)}, button)
+	local panel = UI.Make("Frame", {
+		Size = UDim2.new(0, 290, 0.72, 0), AnchorPoint = Vector2.new(1,0), Position = UDim2.new(1,-20,0,100),
+		BackgroundColor3 = Color3.fromRGB(10,17,28), BorderSizePixel = 0, Visible = false,
+	}, parent)
+	UI.Make("UISizeConstraint", {MaxSize = Vector2.new(290,650)}, panel)
+	UI.Make("UICorner", {CornerRadius = UDim.new(0,16)}, panel)
+	UI.Make("UIStroke", {Color = Color3.fromRGB(35,70,110)}, panel)
+	local scroll = UI.Make("ScrollingFrame", {
+		Size = UDim2.new(1,-24,1,-24), Position = UDim2.fromOffset(12,12), BackgroundTransparency = 1,
+		BorderSizePixel = 0, ScrollBarThickness = 3, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+	}, panel)
+	UI.Make("UIListLayout", {Padding = UDim.new(0,7), SortOrder = Enum.SortOrder.LayoutOrder}, scroll)
+	local order = 0
+	local function row(text, callback)
+		order += 1
+		local control = UI.Make("TextButton", {
+			Text = text, Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = Color3.fromRGB(225,240,255),
+			BackgroundColor3 = Color3.fromRGB(20,32,49), BorderSizePixel = 0,
+			Size = UDim2.new(1,-4,0,34), LayoutOrder = order,
+		}, scroll)
+		UI.Make("UICorner", {CornerRadius = UDim.new(0,9)}, control)
+		if callback then control.Activated:Connect(function() callback(control) end) end
+		return control
+	end
+	local status = row("Waiting for server authorization")
+	status.AutoButtonColor = false
+	for _, key in ipairs({"Enabled","Boxes","Names","Distance","Health","Team","Skeleton","Radar","UseTeamColors","ShowTeammates"}) do
+		local function text() return key .. ": " .. (settings[key] and "ON" or "OFF") end
+		row(text(), function(control) settings[key] = not settings[key]; control.Text = text() end)
+	end
+	local function cycle(key, values, suffix)
+		row(key .. ": " .. settings[key] .. suffix, function(control)
+			local index = table.find(values, settings[key]) or 0
+			settings[key] = values[index % #values + 1]
+			control.Text = key .. ": " .. settings[key] .. suffix
+		end)
+	end
+	cycle("RadarRange", {100,300,500,1000}, " studs")
+	cycle("RadarSize", {140,180,220}, " px")
+	cycle("MaxDistance", {300,750,1500,3000}, " studs")
+	local palette = {
+		Color3.fromRGB(39,136,255), Color3.fromRGB(100,235,255), Color3.fromRGB(112,255,208),
+		Color3.fromRGB(255,170,75), Color3.fromRGB(255,110,195), Color3.fromRGB(235,244,255),
+	}
+	for _, key in ipairs({"Box","Text","Skeleton","Radar"}) do
+		local control = row(key .. " color · click to cycle", function(current)
+			local index = table.find(palette, settings.Colors[key]) or 0
+			settings.Colors[key] = palette[index % #palette + 1]
+			current.TextColor3 = settings.Colors[key]
+		end)
+		control.TextColor3 = settings.Colors[key]
+	end
+	row("Team colors override box / radar colors").AutoButtonColor = false
+	button.Activated:Connect(function() panel.Visible = not panel.Visible end)
+	local connection = UserInputService.InputBegan:Connect(function(input, processed)
+		if not processed and input.KeyCode == config.MenuKey then panel.Visible = not panel.Visible end
+	end)
+	function self:SetStatus(text) status.Text = text end
+	function self:Destroy() connection:Disconnect(); panel:Destroy(); button:Destroy() end
+	return self
+end
+return Menu
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX12"><Properties><string name="Name">Projection</string><ProtectedString name="Source">local Projection = {}
+function Projection.Point(camera, position)
+	local point, visible = camera:WorldToViewportPoint(position)
+	return Vector2.new(point.X, point.Y), visible and point.Z &gt; 0.1
+end
+function Projection.Box(camera, cf, size)
+	local minimum = Vector2.new(math.huge, math.huge)
+	local maximum = Vector2.new(-math.huge, -math.huge)
+	for _, x in ipairs({-1, 1}) do
+		for _, y in ipairs({-1, 1}) do
+			for _, z in ipairs({-1, 1}) do
+				local corner = cf:PointToWorldSpace(Vector3.new(size.X*x/2, size.Y*y/2, size.Z*z/2))
+				local point = camera:WorldToViewportPoint(corner)
+				-- Reject boxes crossing the near plane rather than draw huge inverted rectangles.
+				if point.Z &lt;= 0.1 then return nil end
+				minimum = Vector2.new(math.min(minimum.X, point.X), math.min(minimum.Y, point.Y))
+				maximum = Vector2.new(math.max(maximum.X, point.X), math.max(maximum.Y, point.Y))
+			end
+		end
+	end
+	local viewport = camera.ViewportSize
+	if maximum.X &lt; 0 or maximum.Y &lt; 0 or minimum.X &gt; viewport.X or minimum.Y &gt; viewport.Y then return nil end
+	minimum = Vector2.new(math.max(0, minimum.X), math.max(0, minimum.Y))
+	maximum = Vector2.new(math.min(viewport.X, maximum.X), math.min(viewport.Y, maximum.Y))
+	return minimum, maximum - minimum
+end
+return Projection
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX13"><Properties><string name="Name">Radar</string><ProtectedString name="Source">local UI = require(script.Parent.UI)
+local Radar = {}
+Radar.__index = Radar
+function Radar.new(parent)
+	local frame = UI.Make("Frame", {
+		AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 20, 1, -24),
+		BackgroundColor3 = Color3.fromRGB(10, 17, 28), BackgroundTransparency = 0.12, BorderSizePixel = 0,
+		ClipsDescendants = true, Visible = false,
+	}, parent)
+	UI.Make("UICorner", {CornerRadius = UDim.new(1, 0)}, frame)
+	UI.Make("UIStroke", {Color = Color3.fromRGB(39, 80, 125)}, frame)
+	UI.Make("Frame", {Size = UDim2.new(1, 0, 0, 1), Position = UDim2.fromScale(0, 0.5), BorderSizePixel = 0, BackgroundColor3 = Color3.fromRGB(30, 48, 70)}, frame)
+	UI.Make("Frame", {Size = UDim2.new(0, 1, 1, 0), Position = UDim2.fromScale(0.5, 0), BorderSizePixel = 0, BackgroundColor3 = Color3.fromRGB(30, 48, 70)}, frame)
+	UI.Make("TextLabel", {Text = "▲", Size = UDim2.fromOffset(16,16), AnchorPoint = Vector2.new(0.5,0.5), Position = UDim2.fromScale(0.5,0.5), BackgroundTransparency = 1, TextColor3 = Color3.new(1,1,1), TextSize = 14, ZIndex = 3}, frame)
+	return setmetatable({frame = frame, dots = {}}, Radar)
+end
+function Radar:Update(entities, camera, settings, origin)
+	self.frame.Visible = settings.Enabled and settings.Radar
+	if not self.frame.Visible then return end
+	local size, range = settings.RadarSize, math.max(1, settings.RadarRange)
+	self.frame.Size = UDim2.fromOffset(size, size)
+	local look = camera.CFrame.LookVector
+	local forward = Vector3.new(look.X, 0, look.Z)
+	if forward.Magnitude &lt; 0.001 then forward = Vector3.new(0, 0, -1) else forward = forward.Unit end
+	local right = forward:Cross(Vector3.new(0, 1, 0))
+	local used = {}
+	for _, entity in ipairs(entities) do
+		local delta = entity.root.Position-origin
+		local planar = Vector3.new(delta.X, 0, delta.Z)
+		if planar.Magnitude &lt;= range then
+			used[entity.id] = true
+			local dot = self.dots[entity.id]
+			if not dot then
+				dot = UI.Make("TextLabel", {Text = "▲", BackgroundTransparency = 1, Size = UDim2.fromOffset(12,12), AnchorPoint = Vector2.new(0.5,0.5), TextSize = 12, ZIndex = 2}, self.frame)
+				self.dots[entity.id] = dot
+			end
+			dot.Position = UDim2.fromOffset(size/2+planar:Dot(right)/range*(size/2-10), size/2-planar:Dot(forward)/range*(size/2-10))
+			local heading = entity.root.LookVector
+			dot.Rotation = math.deg(math.atan2(heading:Dot(right), heading:Dot(forward)))
+			dot.TextColor3 = settings.UseTeamColors and not entity.neutral and entity.teamColor or settings.Colors.Radar
+			dot.Visible = true
+		end
+	end
+	for id, dot in pairs(self.dots) do if not used[id] then dot:Destroy(); self.dots[id] = nil end end
+end
+function Radar:Clear()
+	self.frame.Visible = false
+	for id, dot in pairs(self.dots) do dot:Destroy(); self.dots[id] = nil end
+end
+return Radar
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX14"><Properties><string name="Name">Renderer</string><ProtectedString name="Source">local UI = require(script.Parent.UI)
+local Projection = require(script.Parent.Projection)
+local Renderer = {}
+Renderer.__index = Renderer
+function Renderer.new(parent)
+	return setmetatable({parent = parent, entries = {}, factories = {}}, Renderer)
+end
+-- Register before the first Update. A feature implements Update, Hide and Destroy.
+function Renderer:RegisterFeature(name, factory)
+	assert(next(self.entries) == nil, "Register features before rendering begins")
+	self.factories[name] = factory
+end
+function Renderer:Create()
+	local entry = {features = {}}
+	entry.box = UI.Make("Frame", {BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false}, self.parent)
+	entry.stroke = UI.Make("UIStroke", {Thickness = 1.5}, entry.box)
+	entry.info = UI.Make("TextLabel", {
+		BackgroundTransparency = 1, Size = UDim2.fromOffset(240, 58), AnchorPoint = Vector2.new(0.5, 1),
+		Font = Enum.Font.GothamMedium, TextSize = 12, TextStrokeTransparency = 0.25,
+		TextYAlignment = Enum.TextYAlignment.Bottom, Visible = false,
+	}, self.parent)
+	entry.health = UI.Make("Frame", {BackgroundColor3 = Color3.fromRGB(18, 23, 30), BorderSizePixel = 0, Visible = false}, self.parent)
+	entry.fill = UI.Make("Frame", {BorderSizePixel = 0, AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1)}, entry.health)
+	for name, factory in pairs(self.factories) do entry.features[name] = factory(self.parent) end
+	return entry
+end
+function Renderer:HideEntry(entry)
+	entry.box.Visible, entry.info.Visible, entry.health.Visible = false, false, false
+	for _, feature in pairs(entry.features) do feature:Hide() end
+end
+function Renderer:Update(entities, camera, settings, origin)
+	local used = {}
+	for _, entity in ipairs(entities) do
+		used[entity.id] = true
+		local entry = self.entries[entity.id]
+		if not entry then entry = self:Create(); self.entries[entity.id] = entry end
+		self:HideEntry(entry)
+		local top, size = Projection.Box(camera, entity.root * entity.boxOffset, entity.size)
+		if top then
+			local color = settings.UseTeamColors and not entity.neutral and entity.teamColor or settings.Colors.Box
+			entry.box.Position, entry.box.Size = UDim2.fromOffset(top.X, top.Y), UDim2.fromOffset(size.X, size.Y)
+			entry.stroke.Color, entry.box.Visible = color, settings.Boxes
+			local lines = {}
+			if settings.Names then table.insert(lines, entity.name .. " (@" .. entity.username .. ")") end
+			local details = {}
+			if settings.Team then table.insert(details, entity.team) end
+			if settings.Distance then table.insert(details, string.format("%.0f studs", (entity.root.Position-origin).Magnitude)) end
+			if #details &gt; 0 then table.insert(lines, table.concat(details, " · ")) end
+			if settings.Health then table.insert(lines, string.format("HP %.0f / %.0f", entity.health, entity.maxHealth)) end
+			entry.info.Text, entry.info.TextColor3 = table.concat(lines, "\n"), settings.Colors.Text
+			entry.info.Position = UDim2.fromOffset(top.X+size.X/2, math.max(58, top.Y-5))
+			entry.info.Visible = #lines &gt; 0
+			entry.health.Position, entry.health.Size = UDim2.fromOffset(top.X-7, top.Y), UDim2.fromOffset(3, size.Y)
+			local ratio = math.clamp(entity.health/math.max(1, entity.maxHealth), 0, 1)
+			entry.fill.Size = UDim2.fromScale(1, ratio)
+			entry.fill.BackgroundColor3 = Color3.fromRGB(255, 80, 90):Lerp(Color3.fromRGB(90, 230, 140), ratio)
+			entry.health.Visible = settings.Health
+			for _, feature in pairs(entry.features) do feature:Update(entity, camera, settings) end
+		end
+	end
+	for id, entry in pairs(self.entries) do
+		if not used[id] then
+			for _, feature in pairs(entry.features) do feature:Destroy() end
+			entry.box:Destroy(); entry.info:Destroy(); entry.health:Destroy()
+			self.entries[id] = nil
+		end
+	end
+end
+function Renderer:Clear()
+	self:Update({}, nil, nil, nil)
+end
+return Renderer
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX15"><Properties><string name="Name">Skeleton</string><ProtectedString name="Source">local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Rig = require(ReplicatedStorage:WaitForChild("PlayerTracking"):WaitForChild("Rig"))
+local UI = require(script.Parent.UI)
+local Projection = require(script.Parent.Projection)
+local Skeleton = {}
+Skeleton.__index = Skeleton
+function Skeleton.new(parent)
+	local self = setmetatable({lines = {}}, Skeleton)
+	for _ = 1, 14 do table.insert(self.lines, UI.Line(parent)) end
+	return self
+end
+function Skeleton:Hide()
+	for _, line in ipairs(self.lines) do line.Visible = false end
+end
+function Skeleton:Update(entity, camera, settings)
+	self:Hide()
+	if not settings.Skeleton then return end
+	for index, link in ipairs(Rig.Links[entity.rig] or {}) do
+		local first, last = entity.joints[link[1]], entity.joints[link[2]]
+		if first and last then
+			local a, aVisible = Projection.Point(camera, first)
+			local b, bVisible = Projection.Point(camera, last)
+			if aVisible and bVisible then UI.SetLine(self.lines[index], a, b, settings.Colors.Skeleton) end
+		end
+	end
+end
+function Skeleton:Destroy()
+	for _, line in ipairs(self.lines) do line:Destroy() end
+end
+return Skeleton
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX16"><Properties><string name="Name">Store</string><ProtectedString name="Source">local Store = {}
+Store.__index = Store
+function Store.new(config)
+	return setmetatable({config = config, history = {}, sequence = 0}, Store)
+end
+function Store:Push(packet)
+	if packet.sequence &lt;= self.sequence then return end
+	self.sequence = packet.sequence
+	local present = {}
+	for _, entity in ipairs(packet.entities) do
+		present[entity.id] = true
+		local history = self.history[entity.id]
+		if not history or history.generation ~= entity.generation then
+			history = {generation = entity.generation, samples = {}}
+			self.history[entity.id] = history
+		end
+		table.insert(history.samples, {time = packet.time, entity = entity})
+		while #history.samples &gt; 8 do table.remove(history.samples, 1) end
+	end
+	for id in pairs(self.history) do if not present[id] then self.history[id] = nil end end
+end
+function Store:Get(now)
+	local result = {}
+	local target = now - self.config.InterpolationDelay
+	for _, history in pairs(self.history) do
+		local samples = history.samples
+		local newest = samples[#samples]
+		if now - newest.time &lt;= self.config.StaleAfter then
+			local left, right = samples[1], newest
+			for index = 1, #samples - 1 do
+				if target &gt;= samples[index].time and target &lt;= samples[index + 1].time then
+					left, right = samples[index], samples[index + 1]
+					break
+				end
+			end
+			if target &gt;= newest.time then left, right = newest, newest end
+			if target &lt;= samples[1].time then left, right = samples[1], samples[1] end
+			local alpha = right.time &gt; left.time and math.clamp((target - left.time) / (right.time - left.time), 0, 1) or 1
+			local entity = table.clone(right.entity)
+			entity.root = left.entity.root:Lerp(right.entity.root, alpha)
+			entity.joints = {}
+			for name, position in pairs(right.entity.joints) do
+				entity.joints[name] = (left.entity.joints[name] or position):Lerp(position, alpha)
+			end
+			table.insert(result, entity)
+		end
+	end
+	return result
+end
+return Store
+</ProtectedString></Properties></Item><Item class="LocalScript" referent="RBX17"><Properties><string name="Name">Tracking</string><ProtectedString name="Source">local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local UI = require(script.Parent.UI)
+local Store = require(script.Parent.Store)
+local Renderer = require(script.Parent.Renderer)
+local Skeleton = require(script.Parent.Skeleton)
+local Radar = require(script.Parent.Radar)
+local Menu = require(script.Parent.Menu)
+local shared = ReplicatedStorage:WaitForChild("PlayerTracking")
+local Config = require(shared:WaitForChild("Config"))
+local player = Players.LocalPlayer
+local settings = table.clone(Config.Defaults)
+settings.Colors = table.clone(Config.Colors)
+settings.RadarRange, settings.RadarSize, settings.MaxDistance = Config.RadarRange, Config.RadarSize, Config.MaxDistance
+local gui = UI.Make("ScreenGui", {Name = "PlayerTracking", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 10, ZIndexBehavior = Enum.ZIndexBehavior.Sibling}, player:WaitForChild("PlayerGui"))
+local drawing = UI.Make("Frame", {Size = UDim2.fromScale(1,1), BackgroundTransparency = 1}, gui)
+local radarLayer = UI.Make("Frame", {Size = UDim2.fromScale(1,1), BackgroundTransparency = 1, ZIndex = 2}, gui)
+local menuLayer = UI.Make("Frame", {Size = UDim2.fromScale(1,1), BackgroundTransparency = 1, ZIndex = 5}, gui)
+local renderer = Renderer.new(drawing)
+renderer:RegisterFeature("Skeleton", function(parent) return Skeleton.new(parent) end)
+local radar, menu, store = Radar.new(radarLayer), Menu.new(menuLayer, settings, Config), Store.new(Config)
+local snapshotConnection = shared:WaitForChild("Snapshot").OnClientEvent:Connect(function(packet) store:Push(packet) end)
+local elapsed = 0
+local renderConnection = RunService.RenderStepped:Connect(function(dt)
+	elapsed += dt
+	if elapsed &lt; 1/math.clamp(Config.RenderHz, 1, 60) then return end
+	elapsed = 0
+	local camera = Workspace.CurrentCamera
+	local authorized = player:GetAttribute("PlayerTrackingAllowed") == true
+	if not camera or not authorized or not settings.Enabled then
+		renderer:Clear(); radar:Clear()
+		menu:SetStatus(not authorized and "Not authorized by server" or "Tracking disabled")
+		return
+	end
+	local localRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	local origin = localRoot and localRoot.Position or camera.CFrame.Position
+	local candidates = {}
+	for _, entity in ipairs(store:Get(Workspace:GetServerTimeNow())) do
+		local sameTeam = not player.Neutral and not entity.neutral and player.Team and player.Team.Name == entity.team
+		if entity.id ~= player.UserId and (settings.ShowTeammates or not sameTeam) then
+			local distance = (entity.root.Position-origin).Magnitude
+			if distance &lt;= settings.MaxDistance then entity.distance = distance; table.insert(candidates, entity) end
+		end
+	end
+	table.sort(candidates, function(a,b) return a.distance &lt; b.distance end)
+	local visible = {}
+	for index = 1, math.min(#candidates, Config.MaxRenderedPlayers) do visible[index] = candidates[index] end
+	renderer:Update(visible, camera, settings, origin)
+	radar:Update(candidates, camera, settings, origin)
+	menu:SetStatus(string.format("%d tracked · %d render budget", #candidates, #visible))
+end)
+script.Destroying:Connect(function()
+	snapshotConnection:Disconnect(); renderConnection:Disconnect()
+	renderer:Clear(); radar:Clear(); menu:Destroy(); gui:Destroy()
+end)
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX18"><Properties><string name="Name">UI</string><ProtectedString name="Source">local UI = {}
+function UI.Make(class, properties, parent)
+	local object = Instance.new(class)
+	for key, value in pairs(properties) do object[key] = value end
+	object.Parent = parent
+	return object
+end
+function UI.Line(parent)
+	return UI.Make("Frame", {BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Visible = false}, parent)
+end
+function UI.SetLine(line, first, last, color)
+	local delta = last - first
+	line.Position = UDim2.fromOffset((first.X+last.X)/2, (first.Y+last.Y)/2)
+	line.Size = UDim2.fromOffset(delta.Magnitude, 2)
+	line.Rotation = math.deg(math.atan2(delta.Y, delta.X))
+	line.BackgroundColor3 = color
+	line.Visible = true
+end
+return UI
+</ProtectedString></Properties></Item></Item></Item></Item><Item class="Workspace" referent="RBX19"><Properties><string name="Name">Workspace</string></Properties><Item class="Part" referent="RBX20"><Properties><string name="Name">DemoFloor</string><bool name="Anchored">true</bool><Color3uint8 name="Color3uint8">1713720</Color3uint8><Vector3 name="size"><X>256</X><Y>1</Y><Z>256</Z></Vector3><CoordinateFrame name="CFrame"><X>0</X><Y>0</Y><Z>0</Z><R00>1</R00><R01>0</R01><R02>0</R02><R10>0</R10><R11>1</R11><R12>0</R12><R20>0</R20><R21>0</R21><R22>1</R22></CoordinateFrame></Properties></Item><Item class="SpawnLocation" referent="RBX21"><Properties><string name="Name">Spawn</string><bool name="Anchored">true</bool><Color3uint8 name="Color3uint8">2590975</Color3uint8><Vector3 name="size"><X>8</X><Y>1</Y><Z>8</Z></Vector3><CoordinateFrame name="CFrame"><X>0</X><Y>3</Y><Z>0</Z><R00>1</R00><R01>0</R01><R02>0</R02><R10>0</R10><R11>1</R11><R12>0</R12><R20>0</R20><R21>0</R21><R22>1</R22></CoordinateFrame></Properties></Item></Item></roblox>

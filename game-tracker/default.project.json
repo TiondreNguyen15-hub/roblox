@@ -1,0 +1,9 @@
+{
+  "name": "PlayerTracking",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {"PlayerTracking": {"$path": "shared"}},
+    "ServerScriptService": {"PlayerTrackingServer": {"$path": "server"}},
+    "StarterPlayer": {"StarterPlayerScripts": {"PlayerTrackingClient": {"$path": "client"}}}
+  }
+}

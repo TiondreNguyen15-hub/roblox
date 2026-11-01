@@ -21,3 +21,7 @@ Change `YOUR GAME` in the script to your game's name. Customize the credits text
 - Press Play and confirm the menu closes, then respawn and confirm it stays closed.
 
 Roblox Studio is required to validate rendering and gameplay; these checks have not been run in the Linux cloud environment.
+
+## In-game player tracking
+
+The modular authoritative-server tracker is in [game-tracker](game-tracker/README.md). Download [the Roblox Studio demo place](downloads/Player-Tracking-Demo.rbxlx) or [the source ZIP](downloads/Player-Tracking-Source.zip). It includes boxes, player details, skeletons, radar, interpolation, and a settings menu.
