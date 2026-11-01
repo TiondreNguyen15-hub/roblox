@@ -8,6 +8,8 @@ local Renderer = require(script.Parent.Renderer)
 local Skeleton = require(script.Parent.Skeleton)
 local Radar = require(script.Parent.Radar)
 local Menu = require(script.Parent.Menu)
+local CameraLock = require(script.Parent.CameraLock)
+local WallHighlights = require(script.Parent.WallHighlights)
 local shared = ReplicatedStorage:WaitForChild("PlayerTracking")
 local Config = require(shared:WaitForChild("Config"))
 local player = Players.LocalPlayer
@@ -20,13 +22,17 @@ local radarLayer = UI.Make("Frame", {Size = UDim2.fromScale(1,1), BackgroundTran
 local menuLayer = UI.Make("Frame", {Size = UDim2.fromScale(1,1), BackgroundTransparency = 1, ZIndex = 5}, gui)
 local renderer = Renderer.new(drawing)
 renderer:RegisterFeature("Skeleton", function(parent) return Skeleton.new(parent) end)
-local radar, menu, store = Radar.new(radarLayer), Menu.new(menuLayer, settings, Config), Store.new(Config)
+renderer:RegisterFeature("WallHighlights", function() return WallHighlights.new() end)
+local store = Store.new(Config)
+local cameraLock = CameraLock.new(player, store, settings, Config)
+local radar, menu = Radar.new(radarLayer), Menu.new(menuLayer, settings, Config, cameraLock)
 local snapshotConnection = shared:WaitForChild("Snapshot").OnClientEvent:Connect(function(packet) store:Push(packet) end)
 local elapsed = 0
 local renderConnection = RunService.RenderStepped:Connect(function(dt)
 	elapsed += dt
 	if elapsed < 1/math.clamp(Config.RenderHz, 1, 60) then return end
 	elapsed = 0
+	menu:SetLockStatus(cameraLock:GetStatus())
 	local camera = Workspace.CurrentCamera
 	local authorized = player:GetAttribute("PlayerTrackingAllowed") == true
 	if not camera or not authorized or not settings.Enabled then
@@ -53,5 +59,6 @@ local renderConnection = RunService.RenderStepped:Connect(function(dt)
 end)
 script.Destroying:Connect(function()
 	snapshotConnection:Disconnect(); renderConnection:Disconnect()
+	cameraLock:Destroy()
 	renderer:Clear(); radar:Clear(); menu:Destroy(); gui:Destroy()
 end)

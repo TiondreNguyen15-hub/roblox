@@ -14,15 +14,24 @@ return {
 	RadarRange = 300,
 	RadarSize = 180,
 	MenuKey = Enum.KeyCode.RightShift,
+	SnapLockKey = Enum.KeyCode.Q,
+	TargetLockKey = Enum.KeyCode.T,
+	ReleaseLockKey = Enum.KeyCode.X,
+	LockRadiusPixels = 150,
+	LockMaxDistance = 1500,
+	LockSmoothing = 14,
+	LockTeamCheck = true,
+	LockRequireLineOfSight = true,
 	Colors = {
 		Box = Color3.fromRGB(39, 136, 255),
 		Text = Color3.fromRGB(235, 244, 255),
 		Skeleton = Color3.fromRGB(112, 255, 208),
 		Radar = Color3.fromRGB(39, 136, 255),
+		Wall = Color3.fromRGB(39, 136, 255),
 	},
 	Defaults = {
 		Enabled = true, Boxes = true, Names = true, Distance = true,
-		Health = true, Team = true, Skeleton = false, Radar = true,
+		Health = true, Team = true, Skeleton = true, Radar = true, WallHighlights = true,
 		UseTeamColors = true, ShowTeammates = true,
 	},
 }
@@ -204,7 +213,89 @@ RunService.Heartbeat:Connect(function(dt)
 	HttpBridge.Push(packet)
 	for _, viewer in ipairs(viewers) do snapshot:FireClient(viewer, packet) end
 end)
-</ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX10"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX11"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="Folder" referent="RBX12"><Properties><string name="Name">PlayerTrackingClient</string></Properties><Item class="LocalScript" referent="RBX13"><Properties><string name="Name">DesktopBridge</string><ProtectedString name="Source">local Players=game:GetService("Players")
+</ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX10"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX11"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="Folder" referent="RBX12"><Properties><string name="Name">PlayerTrackingClient</string></Properties><Item class="ModuleScript" referent="RBX13"><Properties><string name="Name">CameraLock</string><ProtectedString name="Source">local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local CameraLock = {}
+CameraLock.__index = CameraLock
+function CameraLock.new(player, store, settings, config)
+	local self = setmetatable({player=player,store=store,settings=settings,config=config,target=nil,mode=nil,status="Camera lock: OFF"}, CameraLock)
+	self.binding = "AuthorizedCameraLock_" .. player.UserId
+	self.input = UserInputService.InputBegan:Connect(function(input, processed)
+		if processed or UserInputService:GetFocusedTextBox() then return end
+		if input.KeyCode == config.SnapLockKey then self:Toggle("snap") end
+		if input.KeyCode == config.TargetLockKey then self:Toggle("smooth") end
+		if input.KeyCode == config.ReleaseLockKey then self:Release("Released") end
+	end)
+	RunService:BindToRenderStep(self.binding, Enum.RenderPriority.Camera.Value + 1, function(dt) self:Step(dt) end)
+	return self
+end
+function CameraLock:Release(reason)
+	self.target=nil;self.mode=nil;self.status="Camera lock: OFF" .. (reason and " · "..reason or "")
+end
+function CameraLock:Ready()
+	if self.player:GetAttribute("PlayerTrackingAllowed") ~= true or not self.settings.Enabled then return false end
+	local humanoid = self.player.Character and self.player.Character:FindFirstChildOfClass("Humanoid")
+	local camera = Workspace.CurrentCamera
+	return humanoid ~= nil and humanoid.Health &gt; 0 and camera ~= nil and camera.CameraType == Enum.CameraType.Custom
+end
+function CameraLock:Eligible(entity, camera)
+	if entity.id == self.player.UserId or entity.health &lt;= 0 then return false end
+	if self.config.LockTeamCheck and not self.player.Neutral and not entity.neutral and self.player.Team and self.player.Team.Name == entity.team then return false end
+	return (entity.root.Position-camera.CFrame.Position).Magnitude &lt;= math.min(self.settings.MaxDistance,self.config.LockMaxDistance)
+end
+function CameraLock:Point(entity) return entity.joints.Head or entity.root.Position end
+function CameraLock:Visible(entity, camera)
+	if not self.config.LockRequireLineOfSight then return true end
+	local targetPlayer = Players:GetPlayerByUserId(entity.id)
+	local character = targetPlayer and targetPlayer.Character
+	if not character then return false end
+	local parameters = RaycastParams.new()
+	parameters.FilterType = Enum.RaycastFilterType.Exclude
+	parameters.FilterDescendantsInstances = self.player.Character and {self.player.Character} or {}
+	local result = Workspace:Raycast(camera.CFrame.Position, self:Point(entity)-camera.CFrame.Position, parameters)
+	return result == nil or result.Instance:IsDescendantOf(character)
+end
+function CameraLock:Toggle(mode)
+	if self.mode == mode and self.target then self:Release("Released"); return end
+	if not self:Ready() then self:Release("Authorization, live character, and Custom camera required"); return end
+	local camera = Workspace.CurrentCamera
+	local center = camera.ViewportSize/2
+	local best, score = nil, self.config.LockRadiusPixels
+	for _, entity in ipairs(self.store:Get(Workspace:GetServerTimeNow())) do
+		if self:Eligible(entity,camera) and self:Visible(entity,camera) then
+			local point, onScreen = camera:WorldToViewportPoint(self:Point(entity))
+			if onScreen and point.Z &gt; 0.1 then
+				local distance = (Vector2.new(point.X,point.Y)-center).Magnitude
+				if distance &lt; score then best=entity;score=distance end
+			end
+		end
+	end
+	if not best then self:Release("No eligible target inside selection radius"); return end
+	self.target={id=best.id,generation=best.generation};self.mode=mode
+	self.status=(mode=="snap" and "Snap lock: " or "Target lock: ") .. best.name
+	self:Step(0)
+end
+function CameraLock:Step(dt)
+	if not self.target then return end
+	if not self:Ready() then self:Release("Tracking disabled, character unavailable, or camera changed"); return end
+	local camera=Workspace.CurrentCamera
+	local selected=nil
+	for _, entity in ipairs(self.store:Get(Workspace:GetServerTimeNow())) do if entity.id==self.target.id then selected=entity;break end end
+	if not selected or selected.generation~=self.target.generation or not self:Eligible(selected,camera) or not self:Visible(selected,camera) then self:Release("Target unavailable");return end
+	local point = self:Point(selected)
+	if (point-camera.CFrame.Position).Magnitude &lt; 0.01 then self:Release("Target too close");return end
+	local goal=CFrame.lookAt(camera.CFrame.Position,point)
+	local alpha=self.mode=="snap" and 1 or 1-math.exp(-self.config.LockSmoothing*math.max(0,dt))
+	camera.CFrame=camera.CFrame:Lerp(goal,alpha)
+end
+function CameraLock:GetStatus() return self.status end
+function CameraLock:Destroy()
+	self:Release();self.input:Disconnect();RunService:UnbindFromRenderStep(self.binding)
+end
+return CameraLock
+</ProtectedString></Properties></Item><Item class="LocalScript" referent="RBX14"><Properties><string name="Name">DesktopBridge</string><ProtectedString name="Source">local Players=game:GetService("Players")
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
 local RunService=game:GetService("RunService")
 local Workspace=game:GetService("Workspace")
@@ -242,10 +333,10 @@ RunService.Heartbeat:Connect(function(dt)
 		remote:FireServer(camera.CFrame,viewport,vertical)
 	end
 end)
-</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX14"><Properties><string name="Name">Menu</string><ProtectedString name="Source">local UserInputService = game:GetService("UserInputService")
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX15"><Properties><string name="Name">Menu</string><ProtectedString name="Source">local UserInputService = game:GetService("UserInputService")
 local UI = require(script.Parent.UI)
 local Menu = {}
-function Menu.new(parent, settings, config)
+function Menu.new(parent, settings, config, cameraLock)
 	local self = {}
 	local button = UI.Make("TextButton", {
 		Text = "TRACKING · MENU", Font = Enum.Font.GothamBold, TextSize = 12,
@@ -279,7 +370,14 @@ function Menu.new(parent, settings, config)
 	end
 	local status = row("Waiting for server authorization")
 	status.AutoButtonColor = false
-	for _, key in ipairs({"Enabled","Boxes","Names","Distance","Health","Team","Skeleton","Radar","UseTeamColors","ShowTeammates"}) do
+	local lockStatus = row("Camera lock: OFF")
+	lockStatus.AutoButtonColor = false
+	if cameraLock then
+		row("Snap lock [" .. config.SnapLockKey.Name .. "]", function() cameraLock:Toggle("snap") end)
+		row("Target lock [" .. config.TargetLockKey.Name .. "]", function() cameraLock:Toggle("smooth") end)
+		row("Release lock [" .. config.ReleaseLockKey.Name .. "]", function() cameraLock:Release("Released") end)
+	end
+	for _, key in ipairs({"Enabled","Boxes","Names","Distance","Health","Team","Skeleton","WallHighlights","Radar","UseTeamColors","ShowTeammates"}) do
 		local function text() return key .. ": " .. (settings[key] and "ON" or "OFF") end
 		row(text(), function(control) settings[key] = not settings[key]; control.Text = text() end)
 	end
@@ -297,7 +395,7 @@ function Menu.new(parent, settings, config)
 		Color3.fromRGB(39,136,255), Color3.fromRGB(100,235,255), Color3.fromRGB(112,255,208),
 		Color3.fromRGB(255,170,75), Color3.fromRGB(255,110,195), Color3.fromRGB(235,244,255),
 	}
-	for _, key in ipairs({"Box","Text","Skeleton","Radar"}) do
+	for _, key in ipairs({"Box","Text","Skeleton","Radar","Wall"}) do
 		local control = row(key .. " color · click to cycle", function(current)
 			local index = table.find(palette, settings.Colors[key]) or 0
 			settings.Colors[key] = palette[index % #palette + 1]
@@ -311,11 +409,12 @@ function Menu.new(parent, settings, config)
 		if not processed and input.KeyCode == config.MenuKey then panel.Visible = not panel.Visible end
 	end)
 	function self:SetStatus(text) status.Text = text end
+	function self:SetLockStatus(text) lockStatus.Text = text end
 	function self:Destroy() connection:Disconnect(); panel:Destroy(); button:Destroy() end
 	return self
 end
 return Menu
-</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX15"><Properties><string name="Name">Projection</string><ProtectedString name="Source">local Projection = {}
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX16"><Properties><string name="Name">Projection</string><ProtectedString name="Source">local Projection = {}
 function Projection.Point(camera, position)
 	local point, visible = camera:WorldToViewportPoint(position)
 	return Vector2.new(point.X, point.Y), visible and point.Z &gt; 0.1
@@ -342,7 +441,7 @@ function Projection.Box(camera, cf, size)
 	return minimum, maximum - minimum
 end
 return Projection
-</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX16"><Properties><string name="Name">Radar</string><ProtectedString name="Source">local UI = require(script.Parent.UI)
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX17"><Properties><string name="Name">Radar</string><ProtectedString name="Source">local UI = require(script.Parent.UI)
 local Radar = {}
 Radar.__index = Radar
 function Radar.new(parent)
@@ -392,7 +491,7 @@ function Radar:Clear()
 	for id, dot in pairs(self.dots) do dot:Destroy(); self.dots[id] = nil end
 end
 return Radar
-</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX17"><Properties><string name="Name">Renderer</string><ProtectedString name="Source">local UI = require(script.Parent.UI)
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX18"><Properties><string name="Name">Renderer</string><ProtectedString name="Source">local UI = require(script.Parent.UI)
 local Projection = require(script.Parent.Projection)
 local Renderer = {}
 Renderer.__index = Renderer
@@ -464,7 +563,7 @@ function Renderer:Clear()
 	self:Update({}, nil, nil, nil)
 end
 return Renderer
-</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX18"><Properties><string name="Name">Skeleton</string><ProtectedString name="Source">local ReplicatedStorage = game:GetService("ReplicatedStorage")
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX19"><Properties><string name="Name">Skeleton</string><ProtectedString name="Source">local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Rig = require(ReplicatedStorage:WaitForChild("PlayerTracking"):WaitForChild("Rig"))
 local UI = require(script.Parent.UI)
 local Projection = require(script.Parent.Projection)
@@ -494,7 +593,7 @@ function Skeleton:Destroy()
 	for _, line in ipairs(self.lines) do line:Destroy() end
 end
 return Skeleton
-</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX19"><Properties><string name="Name">Store</string><ProtectedString name="Source">local Store = {}
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX20"><Properties><string name="Name">Store</string><ProtectedString name="Source">local Store = {}
 Store.__index = Store
 function Store.new(config)
 	return setmetatable({config = config, history = {}, sequence = 0}, Store)
@@ -544,7 +643,7 @@ function Store:Get(now)
 	return result
 end
 return Store
-</ProtectedString></Properties></Item><Item class="LocalScript" referent="RBX20"><Properties><string name="Name">Tracking</string><ProtectedString name="Source">local Players = game:GetService("Players")
+</ProtectedString></Properties></Item><Item class="LocalScript" referent="RBX21"><Properties><string name="Name">Tracking</string><ProtectedString name="Source">local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
@@ -554,6 +653,8 @@ local Renderer = require(script.Parent.Renderer)
 local Skeleton = require(script.Parent.Skeleton)
 local Radar = require(script.Parent.Radar)
 local Menu = require(script.Parent.Menu)
+local CameraLock = require(script.Parent.CameraLock)
+local WallHighlights = require(script.Parent.WallHighlights)
 local shared = ReplicatedStorage:WaitForChild("PlayerTracking")
 local Config = require(shared:WaitForChild("Config"))
 local player = Players.LocalPlayer
@@ -566,13 +667,17 @@ local radarLayer = UI.Make("Frame", {Size = UDim2.fromScale(1,1), BackgroundTran
 local menuLayer = UI.Make("Frame", {Size = UDim2.fromScale(1,1), BackgroundTransparency = 1, ZIndex = 5}, gui)
 local renderer = Renderer.new(drawing)
 renderer:RegisterFeature("Skeleton", function(parent) return Skeleton.new(parent) end)
-local radar, menu, store = Radar.new(radarLayer), Menu.new(menuLayer, settings, Config), Store.new(Config)
+renderer:RegisterFeature("WallHighlights", function() return WallHighlights.new() end)
+local store = Store.new(Config)
+local cameraLock = CameraLock.new(player, store, settings, Config)
+local radar, menu = Radar.new(radarLayer), Menu.new(menuLayer, settings, Config, cameraLock)
 local snapshotConnection = shared:WaitForChild("Snapshot").OnClientEvent:Connect(function(packet) store:Push(packet) end)
 local elapsed = 0
 local renderConnection = RunService.RenderStepped:Connect(function(dt)
 	elapsed += dt
 	if elapsed &lt; 1/math.clamp(Config.RenderHz, 1, 60) then return end
 	elapsed = 0
+	menu:SetLockStatus(cameraLock:GetStatus())
 	local camera = Workspace.CurrentCamera
 	local authorized = player:GetAttribute("PlayerTrackingAllowed") == true
 	if not camera or not authorized or not settings.Enabled then
@@ -599,9 +704,10 @@ local renderConnection = RunService.RenderStepped:Connect(function(dt)
 end)
 script.Destroying:Connect(function()
 	snapshotConnection:Disconnect(); renderConnection:Disconnect()
+	cameraLock:Destroy()
 	renderer:Clear(); radar:Clear(); menu:Destroy(); gui:Destroy()
 end)
-</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX21"><Properties><string name="Name">UI</string><ProtectedString name="Source">local UI = {}
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX22"><Properties><string name="Name">UI</string><ProtectedString name="Source">local UI = {}
 function UI.Make(class, properties, parent)
 	local object = Instance.new(class)
 	for key, value in pairs(properties) do object[key] = value end
@@ -620,4 +726,29 @@ function UI.SetLine(line, first, last, color)
 	line.Visible = true
 end
 return UI
-</ProtectedString></Properties></Item></Item></Item></Item><Item class="Workspace" referent="RBX22"><Properties><string name="Name">Workspace</string></Properties><Item class="Part" referent="RBX23"><Properties><string name="Name">DemoFloor</string><bool name="Anchored">true</bool><Color3uint8 name="Color3uint8">1713720</Color3uint8><Vector3 name="size"><X>256</X><Y>1</Y><Z>256</Z></Vector3><CoordinateFrame name="CFrame"><X>0</X><Y>0</Y><Z>0</Z><R00>1</R00><R01>0</R01><R02>0</R02><R10>0</R10><R11>1</R11><R12>0</R12><R20>0</R20><R21>0</R21><R22>1</R22></CoordinateFrame></Properties></Item><Item class="SpawnLocation" referent="RBX24"><Properties><string name="Name">Spawn</string><bool name="Anchored">true</bool><Color3uint8 name="Color3uint8">2590975</Color3uint8><Vector3 name="size"><X>8</X><Y>1</Y><Z>8</Z></Vector3><CoordinateFrame name="CFrame"><X>0</X><Y>3</Y><Z>0</Z><R00>1</R00><R01>0</R01><R02>0</R02><R10>0</R10><R11>1</R11><R12>0</R12><R20>0</R20><R21>0</R21><R22>1</R22></CoordinateFrame></Properties></Item></Item></roblox>
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX23"><Properties><string name="Name">WallHighlights</string><ProtectedString name="Source">local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local Walls = {}
+Walls.__index = Walls
+function Walls.new()
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "AuthorizedTrackingHighlight"
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.FillTransparency = 0.8
+	highlight.OutlineTransparency = 0
+	highlight.Enabled = false
+	highlight.Parent = Workspace
+	return setmetatable({highlight = highlight}, Walls)
+end
+function Walls:Hide() self.highlight.Enabled = false end
+function Walls:Update(entity, _camera, settings)
+	local player = Players:GetPlayerByUserId(entity.id)
+	local character = player and player.Character
+	self.highlight.Adornee = character
+	self.highlight.FillColor = settings.Colors.Wall
+	self.highlight.OutlineColor = settings.Colors.Box
+	self.highlight.Enabled = settings.WallHighlights and character ~= nil
+end
+function Walls:Destroy() self.highlight:Destroy() end
+return Walls
+</ProtectedString></Properties></Item></Item></Item></Item><Item class="Workspace" referent="RBX24"><Properties><string name="Name">Workspace</string></Properties><Item class="Part" referent="RBX25"><Properties><string name="Name">DemoFloor</string><bool name="Anchored">true</bool><Color3uint8 name="Color3uint8">1713720</Color3uint8><Vector3 name="size"><X>256</X><Y>1</Y><Z>256</Z></Vector3><CoordinateFrame name="CFrame"><X>0</X><Y>0</Y><Z>0</Z><R00>1</R00><R01>0</R01><R02>0</R02><R10>0</R10><R11>1</R11><R12>0</R12><R20>0</R20><R21>0</R21><R22>1</R22></CoordinateFrame></Properties></Item><Item class="SpawnLocation" referent="RBX26"><Properties><string name="Name">Spawn</string><bool name="Anchored">true</bool><Color3uint8 name="Color3uint8">2590975</Color3uint8><Vector3 name="size"><X>8</X><Y>1</Y><Z>8</Z></Vector3><CoordinateFrame name="CFrame"><X>0</X><Y>3</Y><Z>0</Z><R00>1</R00><R01>0</R01><R02>0</R02><R10>0</R10><R11>1</R11><R12>0</R12><R20>0</R20><R21>0</R21><R22>1</R22></CoordinateFrame></Properties></Item></Item></roblox>

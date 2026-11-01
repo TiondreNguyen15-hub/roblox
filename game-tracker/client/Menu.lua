@@ -1,7 +1,7 @@
 local UserInputService = game:GetService("UserInputService")
 local UI = require(script.Parent.UI)
 local Menu = {}
-function Menu.new(parent, settings, config)
+function Menu.new(parent, settings, config, cameraLock)
 	local self = {}
 	local button = UI.Make("TextButton", {
 		Text = "TRACKING · MENU", Font = Enum.Font.GothamBold, TextSize = 12,
@@ -35,7 +35,14 @@ function Menu.new(parent, settings, config)
 	end
 	local status = row("Waiting for server authorization")
 	status.AutoButtonColor = false
-	for _, key in ipairs({"Enabled","Boxes","Names","Distance","Health","Team","Skeleton","Radar","UseTeamColors","ShowTeammates"}) do
+	local lockStatus = row("Camera lock: OFF")
+	lockStatus.AutoButtonColor = false
+	if cameraLock then
+		row("Snap lock [" .. config.SnapLockKey.Name .. "]", function() cameraLock:Toggle("snap") end)
+		row("Target lock [" .. config.TargetLockKey.Name .. "]", function() cameraLock:Toggle("smooth") end)
+		row("Release lock [" .. config.ReleaseLockKey.Name .. "]", function() cameraLock:Release("Released") end)
+	end
+	for _, key in ipairs({"Enabled","Boxes","Names","Distance","Health","Team","Skeleton","WallHighlights","Radar","UseTeamColors","ShowTeammates"}) do
 		local function text() return key .. ": " .. (settings[key] and "ON" or "OFF") end
 		row(text(), function(control) settings[key] = not settings[key]; control.Text = text() end)
 	end
@@ -53,7 +60,7 @@ function Menu.new(parent, settings, config)
 		Color3.fromRGB(39,136,255), Color3.fromRGB(100,235,255), Color3.fromRGB(112,255,208),
 		Color3.fromRGB(255,170,75), Color3.fromRGB(255,110,195), Color3.fromRGB(235,244,255),
 	}
-	for _, key in ipairs({"Box","Text","Skeleton","Radar"}) do
+	for _, key in ipairs({"Box","Text","Skeleton","Radar","Wall"}) do
 		local control = row(key .. " color · click to cycle", function(current)
 			local index = table.find(palette, settings.Colors[key]) or 0
 			settings.Colors[key] = palette[index % #palette + 1]
@@ -67,6 +74,7 @@ function Menu.new(parent, settings, config)
 		if not processed and input.KeyCode == config.MenuKey then panel.Visible = not panel.Visible end
 	end)
 	function self:SetStatus(text) status.Text = text end
+	function self:SetLockStatus(text) lockStatus.Text = text end
 	function self:Destroy() connection:Disconnect(); panel:Destroy(); button:Destroy() end
 	return self
 end

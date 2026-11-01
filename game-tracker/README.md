@@ -1,3 +1,7 @@
+## New: walls, skeletons, boxes, snap lock, and target lock
+
+See [the camera-lock add-on guide](CAMERA-LOCK.md). Install this updated tracker in your own Studio experience. Q toggles instant snap lock, T toggles smooth persistent target lock, and X releases. Skeletons and through-wall Highlights default on. Server viewer authorization is required.
+
 # Authoritative Roblox player tracking
 
 An in-game tracking system for your own Roblox experience. Server snapshots supply character transforms, health, team, and optional rig positions. The client interpolates snapshots and draws standard Roblox GUI objects. It does not require the desktop app, capture, ONNX, injection, or internet access.
@@ -16,7 +20,7 @@ Copy these folders from the demo place into the matching services in your own pl
 | --- | --- | --- |
 | ReplicatedStorage | PlayerTracking | Config and Rig ModuleScripts |
 | ServerScriptService | PlayerTrackingServer | Tracking server Script |
-| StarterPlayer → StarterPlayerScripts | PlayerTrackingClient | Tracking LocalScript and seven ModuleScripts |
+| StarterPlayer → StarterPlayerScripts | PlayerTrackingClient | All client LocalScripts and sibling ModuleScripts |
 
 Alternatively, sync `default.project.json` with your existing Rojo workflow. The source ZIP includes the same layout. Ordinary `.lua` files are ModuleScripts, `.server.lua` is a Script, and `.client.lua` is a LocalScript.
 
@@ -40,7 +44,7 @@ Team colors override the custom box and radar colors while enabled. Turn UseTeam
 
 Defaults: 10 snapshots/second, 30 rendering updates/second, at most 32 fully rendered characters, 1,500-stud maximum distance, 300-stud radar range, and a 150 ms interpolation delay. All connected characters are streamed by default (`MaxTrackedPlayers = 0`). An optional server cap is available; it limits server enumeration order, not nearest-player selection.
 
-Skeletons are off in the menu by default. To remove their network cost entirely, set `StreamSkeleton = false`; the menu cannot restore data the server does not send. R6/R15 skeletons join limb centers, not animated Motor6D joint pivots.
+Skeletons default on in the camera-lock add-on; toggle them off in the menu if desired. To remove their network cost entirely, set `StreamSkeleton = false`; the menu cannot restore data the server does not send. R6/R15 skeletons join limb centers, not animated Motor6D joint pivots.
 
 Pooling avoids creating GUI objects every frame. Network and rendering rates are independent. Snapshot bandwidth grows with players × authorized viewers × update rate; reduce rates, disable skeleton streaming, or introduce server interest management for large experiences. FPS and bandwidth have not been benchmarked in Roblox Studio, so negligible impact is not guaranteed.
 
