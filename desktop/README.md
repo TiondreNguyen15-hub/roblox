@@ -40,3 +40,11 @@ Start Capture beside ESP or Aim, choose an application, then press Connect Detec
 Blue boxes appear in the app's capture preview for visible objects classified as people with confidence of at least 55%. ESP's Boxes and Names controls apply to those detections; labels show a generic Person and confidence, not usernames. Actual distance is unavailable. The model is trained on everyday images and can miss or misclassify stylized game characters. It cannot identify hidden players. Aim remains a visual preview and does not move the mouse or control games.
 
 Validation: the packaged TensorFlow runtime executed tensor operations. Controlled browser tests verified person filtering, canvas box rendering, ESP toggles, disconnect/clear, model-load failures, cancellation, and capture cleanup using simulated predictions. The cloud policy returned HTTP 403 for the model endpoint, so real-model accuracy and Windows capture still require testing on the target PC. The app displays a load error and permits retry if model loading fails.
+
+## Organized workspace and internet status
+
+Play opens a workspace with a sidebar for Overview, ESP, Aim, and Settings. ESP and Aim have separate configuration cards; the application preview has its own capture panel. The AI Connection card sits below Settings and remains available while configuring tools. Main Menu stops capture and detection.
+
+The connection card shows the browser's online/offline network indication, which does not guarantee the model host is reachable. Connect Detection checks for an active capture and an online network before downloading the official model. Download failures remain visible and the same button allows retry. The model connection is for visible-person inference; this app does not include an external chat AI provider, web search, or AI-to-AI messaging.
+
+UI code is separated into `index.html`, `styles.css`, and `renderer.js`. Navigation, active sidebar state, simulated detection, capture cleanup, offline feedback, and layouts at 360, 700, and 1000 pixels were checked in Chromium. Native Windows capture and real-model detection still require testing on the target PC.

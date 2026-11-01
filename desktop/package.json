@@ -15,7 +15,9 @@
       "main.js",
       "index.html",
       "preload.js",
-      "vendor/**"
+      "vendor/**",
+      "styles.css",
+      "renderer.js"
     ],
     "directories": {
       "output": "dist"
