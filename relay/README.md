@@ -27,13 +27,13 @@ No deployment credentials are needed in this repository. No actual Render servic
 
 ## Pair the Windows app
 
-1. Download the rebuilt Windows app. In its existing **Settings** tab, enter the Render HTTPS origin and the in-game pairing code. Press **Pair Game**.
+1. Download the rebuilt Windows app. Expand **Profile & secure pairing** in its sidebar, enter the Render HTTPS origin and the in-game pairing code. Press **Pair game**.
 2. The pairing result grants access only to that viewer in the configured universe. The native Electron main process saves the credential encrypted through Electron safeStorage (Windows OS encryption). It is not exposed to page scripts or stored in localStorage. Pairing is refused when OS encryption is unavailable.
 3. The desktop polls at about 2 Hz and retries with exponential backoff up to 15 seconds. After initial pairing, fresh authenticated heartbeats detect the current place/server automatically, including rejoining another server in the same universe. This is authenticated game detection, not guessing from process names.
-4. ESP switches to actual API visualization only after a valid fresh packet arrives. It draws server-derived boxes, names, distance in studs, health bars, team identifiers, skeletons, and a camera-oriented radar. Existing toggles are preserved; additional ESP toggles use the same layout. The original UI style, navigation, and Aim code are retained.
-5. Missing/invalid/stale data restores the previous ESP panel and displays a status instead of inventing players. Stop/re-pair using **Forget Pairing**. This revokes the server token when reachable and deletes the encrypted local credential. If offline, the server token remains valid until its 24-hour expiry.
+4. ESP switches to actual API visualization only after a valid fresh packet arrives. It draws server-derived boxes, names, distance in studs, health bars, team identifiers, skeletons, and a camera-oriented radar. Existing toggles are preserved; additional ESP toggles use the same layout. The black/blue styling and branding are retained in the dedicated ESP/Aimbot layout.
+5. Missing/invalid/stale data clears visualization and displays a status instead of inventing players. Stop/re-pair using **Forget Pairing**. This revokes the server token when reachable and deletes the encrypted local credential. If offline, the server token remains valid until its 24-hour expiry.
 
-The existing capture/ONNX path and dependencies are deliberately retained as fallback and for unchanged Aim behavior. Removing them before live verification would violate the requirement to preserve the existing path until the new connection works. No fake data is used by production code; fixtures appear only in tests.
+The latest two-tab rebuild removes capture/ONNX previews and dependencies completely. ESP is API-only and shows an honest waiting/idle state until a validated matched feed arrives. Aimbot provides an authorized target selector/marker, not gameplay input automation. No fake data is used by production code; fixtures appear only in tests.
 
 ## API contract, version 1
 
@@ -61,18 +61,22 @@ Camera data is specific to the authorized viewing client: `cframe` is Roblox's 1
 
 ## Verification and remaining live checks
 
-Run `npm test` in `relay`. Local integration checks cover publishing authentication, universe/schema/viewer validation, single-use pairing, camera scoping, data/projection, stale feeds, replay rejection, server changes, and token expiration. Those packets are explicitly test fixtures. All 14 Luau modules/scripts compile; existing interpolation and projection tests pass. UI regression checks verify that valid data gates the panel switch and that failure restores the original view.
+Run `npm test` in `relay`. Local integration checks cover publishing authentication, universe/schema/viewer validation, single-use pairing, camera scoping, data/projection, stale feeds, replay rejection, server changes, and token expiration. Those packets are explicitly test fixtures. All 14 Luau modules/scripts compile; existing interpolation and projection tests pass. UI/controller regression checks verify LAUNCH-to-STOP behavior, valid data gating, and canvas cleanup on failures.
 
-**Not yet verified:** a real Render deployment, Creator Hub secret configuration, published Roblox HTTP traffic, an actual live player's camera feed, Windows credential storage/native overlay alignment, or gameplay FPS. No claim of a live connection is made.
+**Not yet verified:** a real Render deployment, Creator Hub secret configuration, published Roblox HTTP traffic, an actual live player's camera feed, Windows credential storage/native process detection, or gameplay FPS. No claim of a live connection is made.
 
-After deployment, join with two real accounts, pair the allowlisted viewer, and confirm both account names and UserIds, health changes, team changes, movement/rotation, skeleton poses, connected count, camera alignment, leaving/rejoining servers, lost internet, relay restarts, revoked/expired pairing, and an unauthorized account's denial. Do not remove the retained capture path until this live test passes.
+After deployment, join with two real accounts, pair the allowlisted viewer, and confirm both account names and UserIds, health changes, team changes, movement/rotation, skeleton poses, connected count, camera alignment, leaving/rejoining servers, lost internet, relay restarts, revoked/expired pairing, and an unauthorized account's denial. Verify the API-only UI in the live published experience before relying on its data.
 
 ## Game Profile: Place 79862723087324
 
-The desktop ships with one editable profile for Place ID `79862723087324`. In Settings, edit Place ID/Profile Name, press Save Game Profile, and use Save Current Game Settings after connecting to save that profile's ESP/Aim control values. An uncustomized profile inherits existing settings rather than overwriting them. Profile configuration lives locally; it is not an API credential.
+The desktop ships with one editable profile for Place ID `79862723087324`. Under Profile & secure pairing, edit Place ID/Profile name, press Save Game Profile, and use Save feature settings after connecting to save that profile's ESP/Aim control values. An uncustomized profile inherits existing settings rather than overwriting them. Profile configuration lives locally; it is not an API credential.
 
 The separate `game-process.js` monitor queries only the Windows `RobloxPlayerBeta` process name every three seconds; it does not read Roblox memory, logs, cookies, or command-line credentials. The separate `game-profiles.js` registry matches authenticated API `game.placeId` values, loads matching settings, and displays the game name reported by the Roblox server's MarketplaceService. If the name lookup fails, it says Name unavailable rather than making up a detected name. Process launch alone displays Waiting for authorized Place ID. Without the published-game integration, the app cannot reliably identify the currently played experience.
 
-A mismatched game does not activate the new Player Data ESP. Exiting Roblox or losing fresh API data restores the existing ESP. A paired game server can reconnect automatically, but initial authorization/pairing is always explicit. The registry can be extended with more profile IDs/Place IDs and settings; the current Settings editor edits the first profile. Multiple universes require separately scoped relay credentials/configuration rather than trusting arbitrary games.
+A mismatched game does not activate the new Player Data ESP. Exiting Roblox or losing fresh API data clears the active visualization. A paired game server can reconnect automatically, but initial authorization/pairing is always explicit. The registry can be extended with more profile IDs/Place IDs and settings; the current Settings editor edits the first profile. Multiple universes require separately scoped relay credentials/configuration rather than trusting arbitrary games.
 
 The Universe ID `10353139110` and Place ID `79862723087324` were supplied separately. Their relationship has not been verified against Roblox here; confirm both in Creator Hub. The relay rejects snapshots from a different universe. Windows native process detection and published-game naming/identity remain live-test requirements; browser regression tests used explicitly labeled protocol fixtures.
+
+## Current LAUNCH/STOP interface
+
+The current desktop has only ESP and Aimbot tabs. Pair once, then press LAUNCH; the native controller initializes the authorized integration automatically. It remains armed through game exit/reopen and switches supported profiles on authenticated game identity changes. STOP cancels requests/rendering and disarms auto-start while retaining the encrypted credential. No capture or ONNX fallback remains. See [the desktop guide](../desktop/README.md) for controls and the exact test boundary.

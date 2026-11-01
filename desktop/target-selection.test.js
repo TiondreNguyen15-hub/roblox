@@ -1,0 +1,16 @@
+const assert=require('node:assert/strict');
+require('./player-data');
+const {select}=require('./target-selection');
+const cf=[0,0,0,1,0,0,0,1,0,0,0,1];
+const player=(id,position,teamId='Red',health=100)=>({userId:id,position,teamId,health,maxHealth:100,joints:{}});
+const packet={viewerUserId:1,camera:{cframe:cf,viewport:[1000,500],fov:90},players:[player(1,[0,0,0],'Blue'),player(2,[0,0,-20],'Blue'),player(3,[1,0,-20]),player(4,[2,0,-10],'Red',20),player(5,[0,0,20])]};
+const settings={enabled:true,excludeTeam:true,maxDistance:1500,diameter:200,priority:'screen',point:'center'};
+assert.equal(select(packet,settings).player.userId,3);
+assert.equal(select(packet,{...settings,priority:'health'}).player.userId,4);
+assert.equal(select(packet,{...settings,priority:'distance'}).player.userId,4);
+assert.equal(select(packet,{...settings,excludeTeam:false}).player.userId,2);
+assert.equal(select(packet,{...settings,enabled:false}),null);
+assert.equal(select(packet,{...settings,maxDistance:5}),null);
+assert.equal(select(packet,{...settings,diameter:1}),null);
+assert.equal(select({...packet,players:[player(1,[0,0,0]),player(6,[0,0,-10],'Red',0)]},settings),null);
+console.log('PASS: target priority, team filtering, enable/disable, distance/FOV bounds, dead and behind-camera exclusions. Authorized-data fixtures only.');

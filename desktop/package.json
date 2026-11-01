@@ -2,33 +2,30 @@
   "name": "blue-main-menu",
   "version": "1.0.0",
   "private": true,
-  "description": "Black and blue desktop main menu",
+  "description": "Authorized Roblox ESP and target-selection workspace",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
-    "test": "node detector.test.js"
+    "test": "node session-controller.test.js && node target-selection.test.js && node player-api.test.js",
+    "test:session": "node session-controller.test.js"
   },
   "build": {
     "appId": "com.robloxmenu.blue",
     "productName": "Blue Menu",
     "files": [
       "main.js",
-      "index.html",
       "preload.js",
+      "index.html",
       "styles.css",
-      "renderer.js",
-      "vendor/ort*",
-      "vendor/ONNX*",
-      "models/**",
-      "detector.js",
-      "overlay.html",
-      "overlay.js",
+      "ui.js",
       "player-api.js",
       "player-data.js",
-      "player-api-ui.js",
       "game-profiles.js",
-      "game-process.js"
+      "game-process.js",
+      "session-controller.js",
+      "target-selection.js",
+      "visualization.js"
     ],
     "directories": {
       "output": "dist"
@@ -44,18 +41,12 @@
     "mac": {
       "target": "zip"
     },
-    "extraResources": [
-      "track-window.ps1"
-    ],
     "electronLanguages": [
       "en-US"
     ]
   },
   "devDependencies": {
-    "@tensorflow-models/coco-ssd": "2.2.3",
-    "@tensorflow/tfjs": "4.22.0",
     "electron": "40.10.6",
-    "electron-builder": "26.18.0",
-    "onnxruntime-web": "1.22.0"
+    "electron-builder": "26.18.0"
   }
 }

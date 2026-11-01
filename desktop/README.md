@@ -1,46 +1,51 @@
-# Blue Menu — Windows desktop app
+# Blue Menu — ESP and Aimbot desktop workspace
 
-Black and blue desktop workspace with rounded panels, capture preview, ESP controls, and an Aim target marker.
+A dedicated two-tab Windows app retaining the black/blue branding, rounded panels, authorized Player Data API, and configurable Roblox profiles. The only main tabs are **ESP** and **Aimbot**. No capture preview, local object detector, fake player sample, or injected game access is used.
 
-## Run
+## First-time setup
 
-Download `downloads/Blue-Menu-Windows.exe` from the repository and open it on Windows x64. The portable app is unsigned. Press Play, Start Capture, then select an application window. Detection starts automatically using the bundled uploaded ONNX model; no internet connection is needed.
+Follow [the Render and published Roblox setup guide](../relay/README.md). The relay is configured for Universe ID `10353139110`; the desktop profile defaults to Place ID `79862723087324`. Verify their relationship in Creator Hub. Deploy the relay, configure the server-side Creator Hub secret/HTTP settings, and publish the game integration before expecting live data.
 
-ESP draws model detections in the capture preview and, when Screen Overlay is enabled, in a transparent click-through window over the selected application. The overlay follows the selected window while it is in the foreground and hides when the window is minimized or loses focus. Return to the captured application after configuring the menu to see the overlay. Stop Capture or return to Main Menu to stop detection, remove the overlay, and release the video stream. Disconnect Detection clears boxes and markers while leaving the preview available.
+In the desktop sidebar, expand **Profile & secure pairing**, enter the HTTPS relay and private pairing code shown in your authorized game client, then click **Pair game**. This is a one-time authorization step, not a per-module setup. Pairing credentials are encrypted by the native main process using Windows OS-backed Electron safeStorage, never localStorage. Profile/feature preferences remain local and existing preference keys are migrated where relevant.
 
-Aim marks the detection nearest the image center inside the configured circle. Target Marker, Crosshair, Show Circle, and Circle Size control the preview and screen overlay. This is a target marker, as requested; the app does not move the mouse or control gameplay. ESP Names shows the model class and confidence, not actual usernames. Distance is only a sample preview; the model does not output world distance. The model's Enemy class does not verify team membership.
+## LAUNCH and STOP
 
-## Overlay requirements
+**LAUNCH** arms one native SessionController. It waits for the Roblox process, restores the saved paired credential, polls the authorized API, validates the response, identifies the Place ID, loads the matched profile, and starts visualization/radar. If Roblox opens later, it starts automatically while armed. Game exit aborts polling and clears the current view; reopening starts it again. A different supported Place ID/job unloads the previous profile before loading the next. Unsupported places, unavailable process detection, invalid API responses, missing pairing, and network failures have explicit statuses.
 
-Windows PowerShell is used to query the selected window's visible bounds and foreground status. The bundled `track-window.ps1` must be allowed by the machine's script policy; the app does not bypass it. If tracking fails, a status message appears and capture preview remains available. The overlay uses DPI conversion and excludes itself from capture. Exclusive fullscreen applications and protected windows may not support desktop overlays; test in windowed or borderless mode. Windows alignment and multi-monitor behavior have not been verified in this Linux environment.
+**STOP** disarms auto-start, aborts the in-flight API request, cancels polling and animation frames, clears player/target/map state, and returns the interface to idle. Late results cannot re-enable it. The saved pairing is retained for the next LAUNCH. Use **Forget pairing** to revoke/delete authorization instead. Passive process monitoring remains active so the app can report launch/exit status; it does not start an integration after manual STOP.
 
-## Model
+Electron's single-instance lock prevents duplicate app processes; the controller additionally prevents duplicate integration/poll loops. Closing the app stops the controller and process monitor. No gameplay input, memory reading, anti-cheat bypass, or third-party game integration is implemented.
 
-`models/roblox.onnx` is the user-uploaded model. See `models/README.md` for its original filename, SHA-256, tensor shapes, metadata, and declared AGPL-3.0 license. ONNX Runtime Web, its WASM binary, and the model are bundled locally. Video is processed locally and is not uploaded. Inputs use 640×640 RGB letterboxing; outputs use confidence filtering and non-maximum suppression.
+## ESP
 
-## Develop
+All positions/names/health/team/skeleton data come from the paired server feed. Camera projection is supplied by the authorized viewing client. Controls include visualization enable/disable, boxes, names, health bars, distance, team IDs, skeleton, radar enable/range, camera-relative radar or world X/Z map, and color. The map plots actual horizontal player positions; it does not invent terrain. Skeleton availability depends on the game publisher's StreamSkeleton setting. Connected count includes loading players even when they have no drawable character yet.
 
-Use Node.js 22 or newer. From `desktop`:
+Nothing is drawn while idle, unsupported, disconnected, or stale. Canvases are updated at up to 30 Hz from the latest HTTP snapshot, with no FPS or latency guarantee; the publisher defaults to 2 Hz. Labels and geometry use the actual game camera's viewport/FOV. Near-plane-crossing boxes are deliberately hidden. UI rendering is not a transparent overlay over the game window.
+
+## Aimbot tab: authorized target selection
+
+This tab provides an **enable/disable target selector and visual marker**, not automatic mouse movement or firing. Priority can be closest to crosshair, closest in world, or lowest health ratio. It supports center/head selection (head falls back to root if absent), same-team exclusion, crosshair/circle visibility, circle diameter in camera pixels, and maximum world distance. Dead, offscreen, behind-camera, same-team (when configured), and out-of-range candidates are rejected. A disabled selector produces no selected target. Only validated, profile-matched server data is considered.
+
+## Development
+
+Node.js 22+:
 
 ```sh
+cd desktop
 npm ci
-npm start
 npm test
+npm start
 npm run build -- --win --x64
 ```
 
-Output: `dist/Blue Menu 1.0.0.exe`. The model runtime and WASM assets are retained under `vendor`. The tracking script is copied into the packaged resources directory. English Electron locale resources are packaged to keep the portable download small.
+Portable output: `dist/Blue Menu 1.0.0.exe`. It is unsigned. The package retains only Electron/build tools; TensorFlow, COCO-SSD, ONNX Runtime, model assets, capture IPC, window overlay tracking, old previews, and legacy renderer files were removed after eliminating their runtime references. The original uploaded model remains available in Git history; no inference model is needed by this version.
 
-## Verified
+Modules: `main`/`preload` enforce native IPC boundaries, `session-controller` owns lifecycle, `game-process` detects only the Windows RobloxPlayerBeta process name, `game-profiles` owns profile settings, `player-api` handles encrypted authorization/polling, `player-data` validates/projects real records, `target-selection` selects eligible markers, `visualization` owns canvases/animation cleanup, and `ui` binds controls.
 
-- ONNX structural validation and CPU inference on a blank frame: passed, finite output `[1,5,8400]`.
-- Actual browser WASM inference with the uploaded model: passed; blank video produced zero detections.
-- Three decoder checks: letterbox reversal/NMS, invalid and low-confidence filtering, and boundary clipping.
-- Browser checks with controlled predictions: automatic capture-to-detection startup, nearest-target selection, target toggle, overlay lifecycle, normalized overlay rendering, and capture cleanup.
-- Native Windows capture/tracking, fullscreen compatibility, DPI alignment, and gameplay accuracy still require testing on the target PC. Blank-frame inference verifies execution, not detection accuracy.
+## Tests and limits
 
-## Published-game API integration
+- `npm test`: actual API polling cancellation/late-response rejection and session lifecycle (LAUNCH/STOP, duplication, exit/reopen, switching, unsupported game, API recovery, canceled initialization, late packets, pairing prerequisite) and target selection/filtering.
+- `node ../relay/server.test.js`: authenticated relay protocol, pairing, viewer isolation, stale/replayed data, revocation, reconnection, expiration, and projection.
+- `python ui-workflow.test.py`: run a local static server first (`python -m http.server 8765 --bind 127.0.0.1` in desktop). Requires Python Playwright and Chromium at `/usr/bin/chromium`. This test exercises UI buttons against the actual backend SessionController with explicitly labeled API/process fixtures; it checks visualization/radar/target enablement, recovery, game transitions, STOP, late packets, and responsive widths. It is a development test, not packaged production code.
 
-The Settings tab now supports HTTPS relay pairing. The main process encrypts the saved viewer credential with OS-backed safeStorage; renderer scripts receive data but no token. ESP switches to Player Data visualization only for validated live responses and returns to its previous panel on failure. Aim and the capture fallback are retained pending published-game verification. See [the deployment guide](../relay/README.md). The Windows binary includes this adapter but has not been paired with a real published server here.
-
-Game Profile settings now target Place `79862723087324`, independently of the relay Universe ID. The process monitor detects Roblox launches/exits; authenticated API data establishes the actual game name/Place ID. Profile settings auto-load only on a match. See the deployment guide for limitations and live verification.
+These tests passed in Linux. Native Windows process detection, OS credential storage, app startup, real Render deployment, published Roblox HTTP/camera data, and gameplay accuracy/performance still require live verification. No fixture data is present in production modules and no live connection is claimed before deployment and pairing.

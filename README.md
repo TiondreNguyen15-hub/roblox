@@ -1,3 +1,7 @@
+## Current Windows application
+
+The desktop app now has only ESP and Aimbot tabs, authorized Player Data API visualization, and real LAUNCH/STOP session control. [Download Windows app](downloads/Blue-Menu-Windows.exe) · [Desktop guide](desktop/README.md) · [Render/Roblox deployment](relay/README.md). Aimbot is an authorized target selector/marker, not automated gameplay input. Live game verification still requires deploying and pairing.
+
 # Black & blue Roblox main menu
 
 A simple menu with a dark background, blue Play button, rounded cards and buttons, hover/focus effects, and Settings and Credits panels. Buttons support mouse, touch, and gamepad activation.
