@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: roblox-player-data
+    runtime: node
+    rootDir: relay
+    buildCommand: node --check server.js
+    startCommand: node server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: ROBLOX_UNIVERSE_ID
+        value: "10353139110"
+      - key: GAME_PUBLISH_TOKEN
+        generateValue: true

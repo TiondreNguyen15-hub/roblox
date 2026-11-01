@@ -1,4 +1,11 @@
 const { contextBridge, ipcRenderer } = require('electron');
+contextBridge.exposeInMainWorld('gameProcess',{onStatus:callback=>ipcRenderer.on('game-process:status',(_event,status)=>callback(status))});
+contextBridge.exposeInMainWorld('playerApi',{
+ restore:()=>ipcRenderer.invoke('player-api:restore'),
+ pair:(url,code)=>ipcRenderer.invoke('player-api:pair',url,code),
+ forget:()=>ipcRenderer.invoke('player-api:forget'),
+ onEvent:callback=>ipcRenderer.on('player-api:event',(_event,event)=>callback(event))
+});
 contextBridge.exposeInMainWorld('capture', {
   listWindows: () => ipcRenderer.invoke('capture:list-windows'),
   startOverlay: sourceId => ipcRenderer.invoke('overlay:start',sourceId),

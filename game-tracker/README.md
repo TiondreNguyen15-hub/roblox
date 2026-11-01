@@ -63,3 +63,7 @@ All 11 Luau source modules were compiled with the official Luau compiler. `test-
 The generated XML was parsed and checked to contain all 11 script sources. This is structural validation; Studio rendering, service startup, multi-client replication, and performance remain untested here.
 
 In Studio, test two clients, walking/turning, health changes, team changes, respawning, leaving, R6/R15 rigs, first/third-person cameras, screen edges, radar headings, menu toggles, streaming enabled, and network delay simulation. Test production authorization with an allowed and denied account. Use MicroProfiler and network statistics before raising player/rate budgets.
+
+## Published Roblox desktop integration
+
+The project now includes 14 Luau scripts/modules: `HttpBridge`, server-only `ExportConfig`, and `DesktopBridge.client` add a real HTTPS publishing path for live servers and the normal Roblox client. Export is disabled until you configure the relay and Creator Hub secret. Follow [the Render deployment and pairing guide](../relay/README.md); no game publishing credential is ever placed in client/shared code.

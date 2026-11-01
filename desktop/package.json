@@ -23,7 +23,12 @@
       "models/**",
       "detector.js",
       "overlay.html",
-      "overlay.js"
+      "overlay.js",
+      "player-api.js",
+      "player-data.js",
+      "player-api-ui.js",
+      "game-profiles.js",
+      "game-process.js"
     ],
     "directories": {
       "output": "dist"

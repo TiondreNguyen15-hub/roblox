@@ -25,3 +25,9 @@ Roblox Studio is required to validate rendering and gameplay; these checks have 
 ## In-game player tracking
 
 The modular authoritative-server tracker is in [game-tracker](game-tracker/README.md). Download [the Roblox Studio demo place](downloads/Player-Tracking-Demo.rbxlx) or [the source ZIP](downloads/Player-Tracking-Source.zip). It includes boxes, player details, skeletons, radar, interpolation, and a settings menu.
+
+## Published-game Player Data API
+
+[Render deployment, Roblox setup, secure pairing, API contract, and live-test instructions](relay/README.md). The Render Blueprint defaults the configurable Universe ID to `10353139110`. The desktop retains the existing ESP until a valid game feed arrives.
+
+The desktop Game Profile targets Place ID `79862723087324`. Configure/pair it in Settings; actual game identity comes from the authorized published-game feed.

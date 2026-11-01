@@ -11,7 +11,7 @@
 <main id="app-shell">
 <aside id="sidebar" hidden><div class="brand"><span class="brand-icon">◇</span><span>BLUE MENU<small>DESKTOP WORKSPACE</small></span></div>
 <p class="nav-label">WORKSPACE</p><nav aria-label="Navigation"><button data-view="play">◫ &nbsp; Overview</button><button data-view="esp">▣ &nbsp; ESP</button><button data-view="aim">⊕ &nbsp; Aim</button><button data-view="settings">⚙ &nbsp; Settings</button></nav>
-<div class="connection-card"><span class="section-label">AI CONNECTION</span><span id="network-state" class="network-state">Bundled model</span><p>Uploaded ONNX model.<br>Runs offline on this PC.</p><button id="connect-detection" class="primary">CONNECT DETECTION</button><p id="detection-status" role="status">Detection starts when you select an application.</p><label class="option">Screen overlay<input id="screen-overlay" type="checkbox" checked></label><p id="overlay-status" role="status">Overlay follows the selected foreground window.</p></div>
+<div class="connection-card"><span class="section-label">AI CONNECTION</span><span id="network-state" class="network-state">Bundled model</span><p>Uploaded ONNX model.<br>Runs offline on this PC.</p><button id="connect-detection" class="primary">CONNECT DETECTION</button><p id="detection-status" role="status">Detection starts when you select an application.</p><label class="option">Screen overlay<input id="screen-overlay" type="checkbox" checked></label><p id="game-profile-status" role="status">Waiting for Roblox</p><p id="overlay-status" role="status">Overlay follows the selected foreground window.</p></div>
 <button class="exit-button" data-view="home">← Main menu</button><small class="sidebar-footer">LOCAL VIDEO PROCESSING</small></aside>
 <div class="content">
 <header><div class="mark" aria-hidden="true">◇</div><h1 id="title">BLUE MENU</h1><p id="subtitle">Ready when you are.</p></header>
@@ -23,14 +23,14 @@
 <div id="capture-empty"><span>◫</span><h3>Your workspace, in view</h3><p>Choose an open window to start a live preview.</p></div><div id="capture-display" hidden><div id="capture-stage"><video id="capture-video" autoplay muted playsinline aria-label="Selected application capture"></video><canvas id="detection-overlay" aria-label="Detected people"></canvas></div><button id="stop-capture">STOP CAPTURE</button></div>
 <p id="capture-status" role="status">Choose an application to preview its window.</p>
 </div></section>
-<section id="settings" hidden aria-label="Settings"><span class="section-label">PREFERENCES</span><label class="setting" for="motion">Reduce animations<input id="motion" type="checkbox"></label><p>Your preference is saved on this computer.</p><button class="primary" data-view="home">BACK</button></section>
+<section id="settings" hidden aria-label="Settings"><span class="section-label">PREFERENCES</span><label class="setting" for="motion">Reduce animations<input id="motion" type="checkbox"></label><p>Your preference is saved on this computer.</p><div class="capture-card"><h2>Game Profile</h2><label>Place ID<input id="profile-place" type="number" min="1" value="79862723087324" style="display:block;width:100%;height:38px;margin:10px 0"></label><label>Profile name<input id="profile-label" type="text" value="My Roblox Game" style="display:block;width:100%;height:38px;margin:10px 0"></label><button id="configure-game-profile">SAVE GAME PROFILE</button><button id="save-game-profile">SAVE CURRENT GAME SETTINGS</button><h2>Player Data API</h2><label>HTTPS relay URL<input id="api-url" type="url" placeholder="https://your-relay.example.com" style="display:block;width:100%;height:38px;margin:10px 0"></label><label>In-game pairing code<input id="api-code" type="text" autocomplete="off" style="display:block;width:100%;height:38px;margin:10px 0"></label><button id="api-pair">PAIR GAME</button><button id="api-forget">FORGET PAIRING</button><p>After pairing, your live server is detected automatically. See ESP for connection status.</p></div><button class="primary" data-view="home">BACK</button></section>
 <section id="esp" hidden aria-label="ESP">
-<p class="demo-note">Visual preview</p>
+<p id="api-status" class="demo-note" role="status">Player Data API not paired · existing ESP preserved</p><canvas id="player-visualization" hidden aria-label="Live player visualization" style="width:100%;background:#0a111d;border-radius:15px"></canvas>
 <div class="preview" aria-label="ESP preview"><div id="target"><span id="target-name">PLAYER</span><span id="target-distance">24 m</span></div></div>
 <label class="option">Boxes<input id="boxes" type="checkbox" checked></label>
 <label class="option">Names<input id="names" type="checkbox" checked></label>
 <label class="option">Distance<input id="distance" type="checkbox" checked></label>
-<button class="primary" data-view="play">BACK</button></section>
+<label class="option">Health bars<input id="api-health" type="checkbox" checked></label><label class="option">Team IDs<input id="api-team" type="checkbox" checked></label><label class="option">Skeleton<input id="api-skeleton" type="checkbox"></label><label class="option">Radar<input id="api-radar" type="checkbox" checked></label><label class="option">Radar range (studs)<input id="api-radar-range" type="number" min="1" max="5000" value="300" style="width:80px"></label><button class="primary" data-view="play">BACK</button></section>
 <section id="aim" hidden aria-label="Aim">
 <p class="demo-note">Marker follows the closest detection inside the circle.</p>
 <div class="preview" aria-label="Aim preview"><div id="aim-circle"></div><span id="crosshair">+</span></div>
@@ -45,5 +45,8 @@
 <script src="vendor/ort.min.js"></script>
 <script src="detector.js"></script>
 <script src="renderer.js"></script>
+<script src="player-data.js"></script>
+<script src="game-profiles.js"></script>
+<script src="player-api-ui.js"></script>
 </body>
 </html>

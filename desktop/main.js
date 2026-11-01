@@ -1,6 +1,9 @@
 const { app, BrowserWindow, desktopCapturer, ipcMain, screen } = require('electron');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
+const PlayerApi=require('./player-api');
+const playerApi=new PlayerApi();
+const gameProcess=new (require('./game-process'))();
 let mainWindow, overlayWindow, tracker, allowedSources=new Set();
 function closeOverlay(){
   if(tracker){tracker.kill();tracker=null;}
@@ -20,12 +23,17 @@ function openWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), nodeIntegration: false, contextIsolation: true, sandbox: true }
   });
   mainWindow=window;
-  window.on('closed',()=>{closeOverlay();mainWindow=null;});
+  window.on('closed',()=>{playerApi.stop();gameProcess.stop();closeOverlay();mainWindow=null;});
+  window.webContents.once('did-finish-load',()=>gameProcess.start(status=>{if(mainWindow&&!mainWindow.isDestroyed())mainWindow.webContents.send('game-process:status',status);}));
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', event => event.preventDefault());
   window.loadFile('index.html');
 }
 app.whenReady().then(() => {
+  const sendApi=event=>{if(mainWindow&&!mainWindow.isDestroyed())mainWindow.webContents.send('player-api:event',event);};
+  ipcMain.handle('player-api:restore',async event=>{if(!trusted(event))throw Error('Unavailable');const result=await playerApi.restore();if(result)playerApi.start(sendApi);return result;});
+  ipcMain.handle('player-api:pair',async(event,url,code)=>{if(!trusted(event)||typeof url!=='string'||url.length>2048||typeof code!=='string'||code.length>32)throw Error('Invalid pairing');const result=await playerApi.pair(url,code);playerApi.start(sendApi);return result;});
+  ipcMain.handle('player-api:forget',async event=>{if(!trusted(event))throw Error('Unavailable');await playerApi.forget();return true;});
   ipcMain.handle('capture:list-windows', async event => {
     if (!trusted(event)) throw new Error('Unavailable');
     const sources = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 0, height: 0 } });

@@ -38,3 +38,9 @@ Output: `dist/Blue Menu 1.0.0.exe`. The model runtime and WASM assets are retain
 - Three decoder checks: letterbox reversal/NMS, invalid and low-confidence filtering, and boundary clipping.
 - Browser checks with controlled predictions: automatic capture-to-detection startup, nearest-target selection, target toggle, overlay lifecycle, normalized overlay rendering, and capture cleanup.
 - Native Windows capture/tracking, fullscreen compatibility, DPI alignment, and gameplay accuracy still require testing on the target PC. Blank-frame inference verifies execution, not detection accuracy.
+
+## Published-game API integration
+
+The Settings tab now supports HTTPS relay pairing. The main process encrypts the saved viewer credential with OS-backed safeStorage; renderer scripts receive data but no token. ESP switches to Player Data visualization only for validated live responses and returns to its previous panel on failure. Aim and the capture fallback are retained pending published-game verification. See [the deployment guide](../relay/README.md). The Windows binary includes this adapter but has not been paired with a real published server here.
+
+Game Profile settings now target Place `79862723087324`, independently of the relay Universe ID. The process monitor detects Roblox launches/exits; authenticated API data establishes the actual game name/Place ID. Profile settings auto-load only on a match. See the deployment guide for limitations and live verification.

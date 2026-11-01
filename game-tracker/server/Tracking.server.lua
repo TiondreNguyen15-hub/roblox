@@ -5,6 +5,7 @@ local Workspace = game:GetService("Workspace")
 local shared = ReplicatedStorage:WaitForChild("PlayerTracking")
 local Config = require(shared:WaitForChild("Config"))
 local Rig = require(shared:WaitForChild("Rig"))
+local HttpBridge = require(script.Parent.HttpBridge)
 local snapshot = Instance.new("RemoteEvent")
 snapshot.Name = "Snapshot"
 snapshot.Parent = shared
@@ -50,6 +51,7 @@ RunService.Heartbeat:Connect(function(dt)
 				root = root.CFrame, boxOffset = root.CFrame:ToObjectSpace(box), size = size,
 				health = humanoid.Health, maxHealth = humanoid.MaxHealth,
 				team = player.Team and player.Team.Name or "Neutral",
+				teamId = not player.Neutral and player.Team and tostring(player.Team:GetAttribute("TeamId") or player.Team.Name) or "Neutral",
 				teamColor = player.TeamColor.Color, neutral = player.Neutral,
 				rig = rigType,
 				joints = Config.StreamSkeleton and Rig.Sample(character, rigType) or {},
@@ -58,5 +60,6 @@ RunService.Heartbeat:Connect(function(dt)
 	end
 	sequence += 1
 	local packet = {sequence = sequence, time = Workspace:GetServerTimeNow(), entities = entities}
+	HttpBridge.Push(packet)
 	for _, viewer in ipairs(viewers) do snapshot:FireClient(viewer, packet) end
 end)

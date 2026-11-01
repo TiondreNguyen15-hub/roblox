@@ -56,7 +56,7 @@ for class_name, name, y, dimensions, color in [
 
 place = OUTPUT / "Player-Tracking-Demo.rbxlx"
 ET.ElementTree(document).write(place, encoding="utf-8", xml_declaration=True)
-assert len(document.findall(".//ProtectedString[@name='Source']")) == 11
+assert len(document.findall(".//ProtectedString[@name='Source']")) == sum(len(list((ROOT / folder).glob('*.lua'))) for folder in ('shared','server','client'))
 ET.parse(place)
 with ZipFile(OUTPUT / "Player-Tracking-Source.zip", "w", ZIP_DEFLATED) as archive:
     for path in sorted(ROOT.rglob("*")):

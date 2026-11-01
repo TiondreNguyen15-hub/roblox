@@ -53,13 +53,100 @@ function Rig.Sample(character, rigType)
 	return joints
 end
 return Rig
-</ProtectedString></Properties></Item></Item></Item><Item class="ServerScriptService" referent="RBX5"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Folder" referent="RBX6"><Properties><string name="Name">PlayerTrackingServer</string></Properties><Item class="Script" referent="RBX7"><Properties><string name="Name">Tracking</string><ProtectedString name="Source">local Players = game:GetService("Players")
+</ProtectedString></Properties></Item></Item></Item><Item class="ServerScriptService" referent="RBX5"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Folder" referent="RBX6"><Properties><string name="Name">PlayerTrackingServer</string></Properties><Item class="ModuleScript" referent="RBX7"><Properties><string name="Name">ExportConfig</string><ProtectedString name="Source">-- Server only. Never put a publisher credential in ReplicatedStorage or a LocalScript.
+return {
+	Enabled = false, -- Enable after deploying the HTTPS relay and setting its secret.
+	RelayUrl = "", -- Example: https://player-data.example.com
+	SecretName = "PLAYER_DATA_PUBLISH_TOKEN", -- Creator Hub secret, restricted to your relay domain.
+	PublishHz = 2, -- One batched HTTP request per server tick, not per player.
+	MaxViewers = 10,
+}
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX8"><Properties><string name="Name">HttpBridge</string><ProtectedString name="Source">local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Config = require(script.Parent.ExportConfig)
+local Bridge = {}
+local latest, cameras = nil, {}
+local gameName = nil
+local shared = ReplicatedStorage:WaitForChild("PlayerTracking")
+local remote = Instance.new("RemoteEvent")
+remote.Name = "DesktopBridge"
+remote.Parent = shared
+local function vector(v) return {v.X,v.Y,v.Z} end
+local function frame(cf) return {cf:GetComponents()} end
+local function authorized(player) return player:GetAttribute("PlayerTrackingAllowed") == true end
+remote.OnServerEvent:Connect(function(player, cf, viewport, fov)
+	if not Config.Enabled or not authorized(player) then return end
+	local old = cameras[player.UserId]
+	if old and os.clock()-old.time &lt; 0.15 then return end
+	if typeof(cf) ~= "CFrame" or typeof(viewport) ~= "Vector2" or typeof(fov) ~= "number" then return end
+	if viewport.X ~= viewport.X or viewport.Y ~= viewport.Y then return end
+	if fov ~= fov or fov &lt; 1 or fov &gt; 120 or viewport.X &lt; 1 or viewport.Y &lt; 1 or viewport.X &gt; 8192 or viewport.Y &gt; 8192 then return end
+	for _, value in ipairs(frame(cf)) do if value ~= value or math.abs(value)&gt;1e8 then return end end
+	cameras[player.UserId] = {time=os.clock(),camera={cframe=frame(cf),viewport={viewport.X,viewport.Y},fov=fov}}
+end)
+Players.PlayerRemoving:Connect(function(player) cameras[player.UserId]=nil end)
+function Bridge.Push(packet) latest=packet end
+if Config.Enabled then
+	task.spawn(function() local ok, info=pcall(function() return game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId) end);if ok and type(info.Name)=="string" then gameName=info.Name end end)
+	assert(Config.RelayUrl:match("^https://"), "Player Data relay must use public HTTPS")
+	task.spawn(function()
+		local delay = 1/math.clamp(Config.PublishHz,1,3)
+		local failed = false
+		while true do
+			task.wait(delay)
+			local packet = latest
+			if not packet then continue end
+			local viewers, present = {}, {}
+			for _, entity in ipairs(packet.entities) do present[entity.id]=true end
+			for _, player in ipairs(Players:GetPlayers()) do
+				local camera = cameras[player.UserId]
+				if authorized(player) and present[player.UserId] and camera and os.clock()-camera.time&lt;2 and #viewers&lt;Config.MaxViewers then
+					table.insert(viewers,{userId=player.UserId,camera=camera.camera})
+				end
+			end
+			if #viewers == 0 then continue end
+			local entities = {}
+			for _, entity in ipairs(packet.entities) do
+				local joints={}
+				for name,position in pairs(entity.joints) do joints[name]=vector(position) end
+				local cf=frame(entity.root)
+				table.insert(entities,{userId=entity.id,username=entity.username,displayName=entity.name,
+					position=vector(entity.root.Position),rotation={table.unpack(cf,4,12)},
+					box=frame(entity.root*entity.boxOffset),size=vector(entity.size),health=math.max(0,entity.health),maxHealth=math.max(1,entity.maxHealth),
+					teamId=entity.teamId,rig=entity.rig,joints=joints})
+			end
+			local ok,response=pcall(function()
+				return HttpService:RequestAsync({Url=Config.RelayUrl.."/v1/publish",Method="POST",
+					Headers={["Content-Type"]="application/json",Authorization=HttpService:GetSecret(Config.SecretName):AddPrefix("Bearer ")},
+					Body=HttpService:JSONEncode({version=1,sequence=packet.sequence,game={universeId=game.GameId,placeId=game.PlaceId,jobId=game.JobId,name=gameName},
+						connectedCount=#Players:GetPlayers(),players=entities,viewers=viewers})})
+			end)
+			if ok and response.Success then
+				local decodedOk,data=pcall(function() return HttpService:JSONDecode(response.Body) end)
+				if decodedOk and type(data.pairCodes)=="table" then
+					for _, player in ipairs(Players:GetPlayers()) do
+						local code=data.pairCodes[tostring(player.UserId)]
+						if authorized(player) and type(code)=="string" then remote:FireClient(player,code) end
+					end
+				end
+				failed=false;delay=1/math.clamp(Config.PublishHz,1,3)
+			else
+				if not failed then warn("Player Data relay unavailable. Check relay URL, HTTP settings and Creator Hub secret; retrying.") end
+				failed=true;delay=math.min(15,delay*2)
+			end
+		end
+	end)
+end
+return Bridge
+</ProtectedString></Properties></Item><Item class="Script" referent="RBX9"><Properties><string name="Name">Tracking</string><ProtectedString name="Source">local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local shared = ReplicatedStorage:WaitForChild("PlayerTracking")
 local Config = require(shared:WaitForChild("Config"))
 local Rig = require(shared:WaitForChild("Rig"))
+local HttpBridge = require(script.Parent.HttpBridge)
 local snapshot = Instance.new("RemoteEvent")
 snapshot.Name = "Snapshot"
 snapshot.Parent = shared
@@ -105,6 +192,7 @@ RunService.Heartbeat:Connect(function(dt)
 				root = root.CFrame, boxOffset = root.CFrame:ToObjectSpace(box), size = size,
 				health = humanoid.Health, maxHealth = humanoid.MaxHealth,
 				team = player.Team and player.Team.Name or "Neutral",
+				teamId = not player.Neutral and player.Team and tostring(player.Team:GetAttribute("TeamId") or player.Team.Name) or "Neutral",
 				teamColor = player.TeamColor.Color, neutral = player.Neutral,
 				rig = rigType,
 				joints = Config.StreamSkeleton and Rig.Sample(character, rigType) or {},
@@ -113,9 +201,48 @@ RunService.Heartbeat:Connect(function(dt)
 	end
 	sequence += 1
 	local packet = {sequence = sequence, time = Workspace:GetServerTimeNow(), entities = entities}
+	HttpBridge.Push(packet)
 	for _, viewer in ipairs(viewers) do snapshot:FireClient(viewer, packet) end
 end)
-</ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX8"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX9"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="Folder" referent="RBX10"><Properties><string name="Name">PlayerTrackingClient</string></Properties><Item class="ModuleScript" referent="RBX11"><Properties><string name="Name">Menu</string><ProtectedString name="Source">local UserInputService = game:GetService("UserInputService")
+</ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX10"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX11"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="Folder" referent="RBX12"><Properties><string name="Name">PlayerTrackingClient</string></Properties><Item class="LocalScript" referent="RBX13"><Properties><string name="Name">DesktopBridge</string><ProtectedString name="Source">local Players=game:GetService("Players")
+local ReplicatedStorage=game:GetService("ReplicatedStorage")
+local RunService=game:GetService("RunService")
+local Workspace=game:GetService("Workspace")
+local player=Players.LocalPlayer
+local remote=ReplicatedStorage:WaitForChild("PlayerTracking"):WaitForChild("DesktopBridge")
+local gui=Instance.new("ScreenGui")
+gui.Name="DesktopPairing";gui.ResetOnSpawn=false;gui.Parent=player:WaitForChild("PlayerGui")
+local label=Instance.new("TextLabel")
+label.Size=UDim2.fromOffset(340,44);label.Position=UDim2.new(0.5,-170,0,12)
+label.BackgroundColor3=Color3.fromRGB(12,23,39);label.TextColor3=Color3.fromRGB(130,195,255)
+label.TextSize=14;label.Font=Enum.Font.GothamMedium;label.Visible=false;label.Parent=gui
+local round=Instance.new("UICorner");round.CornerRadius=UDim.new(0,12);round.Parent=label
+local lastCodeAt=0
+remote.OnClientEvent:Connect(function(code)
+	if type(code)~="string" then return end
+	label.Text="Desktop pairing: "..code;label.Visible=true;lastCodeAt=os.clock()
+end)
+local elapsed=0
+RunService.Heartbeat:Connect(function(dt)
+	elapsed+=dt
+	if elapsed&lt;0.2 then return end
+	elapsed=0
+	if os.clock()-lastCodeAt&gt;5 then label.Visible=false end
+	if player:GetAttribute("PlayerTrackingAllowed")~=true then label.Visible=false;return end
+	local camera=Workspace.CurrentCamera
+	if camera then
+		-- Normalize to vertical FOV regardless of the game's FieldOfViewMode.
+		local viewport=camera.ViewportSize
+		local vertical=camera.FieldOfView
+		if camera.FieldOfViewMode==Enum.FieldOfViewMode.Diagonal then
+			vertical=math.deg(2*math.atan(math.tan(math.rad(camera.DiagonalFieldOfView)/2)*viewport.Y/math.sqrt(viewport.X^2+viewport.Y^2)))
+		elseif camera.FieldOfViewMode==Enum.FieldOfViewMode.MaxAxis and viewport.X&gt;viewport.Y then
+			vertical=math.deg(2*math.atan(math.tan(math.rad(camera.MaxAxisFieldOfView)/2)*viewport.Y/viewport.X))
+		end
+		remote:FireServer(camera.CFrame,viewport,vertical)
+	end
+end)
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX14"><Properties><string name="Name">Menu</string><ProtectedString name="Source">local UserInputService = game:GetService("UserInputService")
 local UI = require(script.Parent.UI)
 local Menu = {}
 function Menu.new(parent, settings, config)
@@ -188,7 +315,7 @@ function Menu.new(parent, settings, config)
 	return self
 end
 return Menu
-</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX12"><Properties><string name="Name">Projection</string><ProtectedString name="Source">local Projection = {}
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX15"><Properties><string name="Name">Projection</string><ProtectedString name="Source">local Projection = {}
 function Projection.Point(camera, position)
 	local point, visible = camera:WorldToViewportPoint(position)
 	return Vector2.new(point.X, point.Y), visible and point.Z &gt; 0.1
@@ -215,7 +342,7 @@ function Projection.Box(camera, cf, size)
 	return minimum, maximum - minimum
 end
 return Projection
-</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX13"><Properties><string name="Name">Radar</string><ProtectedString name="Source">local UI = require(script.Parent.UI)
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX16"><Properties><string name="Name">Radar</string><ProtectedString name="Source">local UI = require(script.Parent.UI)
 local Radar = {}
 Radar.__index = Radar
 function Radar.new(parent)
@@ -265,7 +392,7 @@ function Radar:Clear()
 	for id, dot in pairs(self.dots) do dot:Destroy(); self.dots[id] = nil end
 end
 return Radar
-</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX14"><Properties><string name="Name">Renderer</string><ProtectedString name="Source">local UI = require(script.Parent.UI)
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX17"><Properties><string name="Name">Renderer</string><ProtectedString name="Source">local UI = require(script.Parent.UI)
 local Projection = require(script.Parent.Projection)
 local Renderer = {}
 Renderer.__index = Renderer
@@ -337,7 +464,7 @@ function Renderer:Clear()
 	self:Update({}, nil, nil, nil)
 end
 return Renderer
-</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX15"><Properties><string name="Name">Skeleton</string><ProtectedString name="Source">local ReplicatedStorage = game:GetService("ReplicatedStorage")
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX18"><Properties><string name="Name">Skeleton</string><ProtectedString name="Source">local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Rig = require(ReplicatedStorage:WaitForChild("PlayerTracking"):WaitForChild("Rig"))
 local UI = require(script.Parent.UI)
 local Projection = require(script.Parent.Projection)
@@ -367,7 +494,7 @@ function Skeleton:Destroy()
 	for _, line in ipairs(self.lines) do line:Destroy() end
 end
 return Skeleton
-</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX16"><Properties><string name="Name">Store</string><ProtectedString name="Source">local Store = {}
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX19"><Properties><string name="Name">Store</string><ProtectedString name="Source">local Store = {}
 Store.__index = Store
 function Store.new(config)
 	return setmetatable({config = config, history = {}, sequence = 0}, Store)
@@ -417,7 +544,7 @@ function Store:Get(now)
 	return result
 end
 return Store
-</ProtectedString></Properties></Item><Item class="LocalScript" referent="RBX17"><Properties><string name="Name">Tracking</string><ProtectedString name="Source">local Players = game:GetService("Players")
+</ProtectedString></Properties></Item><Item class="LocalScript" referent="RBX20"><Properties><string name="Name">Tracking</string><ProtectedString name="Source">local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
@@ -474,7 +601,7 @@ script.Destroying:Connect(function()
 	snapshotConnection:Disconnect(); renderConnection:Disconnect()
 	renderer:Clear(); radar:Clear(); menu:Destroy(); gui:Destroy()
 end)
-</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX18"><Properties><string name="Name">UI</string><ProtectedString name="Source">local UI = {}
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX21"><Properties><string name="Name">UI</string><ProtectedString name="Source">local UI = {}
 function UI.Make(class, properties, parent)
 	local object = Instance.new(class)
 	for key, value in pairs(properties) do object[key] = value end
@@ -493,4 +620,4 @@ function UI.SetLine(line, first, last, color)
 	line.Visible = true
 end
 return UI
-</ProtectedString></Properties></Item></Item></Item></Item><Item class="Workspace" referent="RBX19"><Properties><string name="Name">Workspace</string></Properties><Item class="Part" referent="RBX20"><Properties><string name="Name">DemoFloor</string><bool name="Anchored">true</bool><Color3uint8 name="Color3uint8">1713720</Color3uint8><Vector3 name="size"><X>256</X><Y>1</Y><Z>256</Z></Vector3><CoordinateFrame name="CFrame"><X>0</X><Y>0</Y><Z>0</Z><R00>1</R00><R01>0</R01><R02>0</R02><R10>0</R10><R11>1</R11><R12>0</R12><R20>0</R20><R21>0</R21><R22>1</R22></CoordinateFrame></Properties></Item><Item class="SpawnLocation" referent="RBX21"><Properties><string name="Name">Spawn</string><bool name="Anchored">true</bool><Color3uint8 name="Color3uint8">2590975</Color3uint8><Vector3 name="size"><X>8</X><Y>1</Y><Z>8</Z></Vector3><CoordinateFrame name="CFrame"><X>0</X><Y>3</Y><Z>0</Z><R00>1</R00><R01>0</R01><R02>0</R02><R10>0</R10><R11>1</R11><R12>0</R12><R20>0</R20><R21>0</R21><R22>1</R22></CoordinateFrame></Properties></Item></Item></roblox>
+</ProtectedString></Properties></Item></Item></Item></Item><Item class="Workspace" referent="RBX22"><Properties><string name="Name">Workspace</string></Properties><Item class="Part" referent="RBX23"><Properties><string name="Name">DemoFloor</string><bool name="Anchored">true</bool><Color3uint8 name="Color3uint8">1713720</Color3uint8><Vector3 name="size"><X>256</X><Y>1</Y><Z>256</Z></Vector3><CoordinateFrame name="CFrame"><X>0</X><Y>0</Y><Z>0</Z><R00>1</R00><R01>0</R01><R02>0</R02><R10>0</R10><R11>1</R11><R12>0</R12><R20>0</R20><R21>0</R21><R22>1</R22></CoordinateFrame></Properties></Item><Item class="SpawnLocation" referent="RBX24"><Properties><string name="Name">Spawn</string><bool name="Anchored">true</bool><Color3uint8 name="Color3uint8">2590975</Color3uint8><Vector3 name="size"><X>8</X><Y>1</Y><Z>8</Z></Vector3><CoordinateFrame name="CFrame"><X>0</X><Y>3</Y><Z>0</Z><R00>1</R00><R01>0</R01><R02>0</R02><R10>0</R10><R11>1</R11><R12>0</R12><R20>0</R20><R21>0</R21><R22>1</R22></CoordinateFrame></Properties></Item></Item></roblox>
