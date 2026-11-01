@@ -13,7 +13,7 @@ async function run(){
  controller.process({running:true});await turn();assert.equal(events.at(-1).state,'idle','STOP must disarm auto-start');
  let aborted=false,disposed=0,resolveStart,send;
  const testBackend=new Backend({start:({signal,emit})=>{send=emit;signal.addEventListener('abort',()=>{aborted=true});return new Promise(resolve=>{resolveStart=resolve});}});
- const received=[];testBackend.start(e=>received.push(e),profiles);await turn();
+ const received=[];testBackend.start(e=>{if(e.type!=='diagnostics')received.push(e)},profiles);await turn();
  send({type:'capability',message:'test adapter'});assert.equal(received.length,1);
  testBackend.stop();assert.ok(aborted);send({type:'data',packet:{}});assert.equal(received.length,1);
  resolveStart(()=>{disposed++});await turn();assert.equal(disposed,1,'late initialization must release its resources');

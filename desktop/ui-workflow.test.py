@@ -46,6 +46,13 @@ try:
   page.evaluate('''async()=>{const cf=[0,0,0,1,0,0,0,1,0,0,0,1];window.packet={status:'connected',version:1,sequence:1,viewerUserId:7,connectedCount:2,game:{universeId:10353139110,placeId:79862723087324,jobId:'fixture',name:'Explicit Test Fixture'},camera:{cframe:cf,viewport:[1000,500],fov:90},players:[{userId:7,username:'self',displayName:'Self',teamId:'Blue',position:[0,0,0],rotation:cf.slice(3),box:cf,size:[2,4,2],health:100,maxHealth:100,joints:{}},{userId:8,username:'fixture',displayName:'Fixture Target',teamId:'Red',position:[1,0,-20],rotation:cf.slice(3),box:[1,0,-20,...cf.slice(3)],size:[2,4,2],health:80,maxHealth:100,joints:{Head:[1,2,-20],Torso:[1,0,-20]}}]};deliver(await testNative({action:'data',packet}));}''')
   page.wait_for_function("()=>!document.getElementById('player-visualization').hidden")
   assert page.locator('#radar-map').is_visible()
+  assert page.locator('#esp-status').inner_text()=='ESP: Active · authorized player data'
+  assert 'Game identified:' in page.locator('#game-profile-status').inner_text()
+  assert 'Player data: Connected' in page.locator('#api-status').inner_text()
+  page.get_by_label('Enable visualization',exact=True).uncheck()
+  assert page.locator('#esp-status').inner_text()=='ESP: Disabled in settings'
+  assert 'Player data: Connected' in page.locator('#api-status').inner_text()
+  page.get_by_label('Enable visualization',exact=True).check()
   assert '2 connected' in page.locator('#player-count').inner_text()
   page.get_by_role('tab',name='Aimbot',exact=False).click()
   page.get_by_label('Enable target selection',exact=True).check()

@@ -56,3 +56,7 @@ The portable unsigned Windows output is `dist/Blue Menu 1.0.0.exe`. Only Electro
 Browser tests require a local static server at port 8765 (`python -m http.server 8765 --bind 127.0.0.1` in desktop), Python Playwright, and Chromium at `/usr/bin/chromium`. These test-only servers are not part of production architecture.
 
 Tests passed on Linux. Native Windows startup/process querying and an actual Roblox client are not verified here. Published Roblox private data is intentionally unavailable through the default local adapter; this is a platform integration requirement, not a claim that an untested live connection exists.
+
+## Detection troubleshooting
+
+See [the source-level detection report](DETECTION-REPORT.md). The connection area now separates the configured target from process detection, observed game identity, authorized data connectivity, and ESP activity. LAUNCH reports bundled integration capabilities; no local Place ID/player-data connector is claimed.

@@ -34,6 +34,14 @@ try:
   page.evaluate("async()=>{processStatus({running:true});deliver(await nativeCommand({action:'process',running:true}));}")
   page.wait_for_function("()=>document.getElementById('state-badge').textContent==='INTEGRATION-REQUIRED'")
   assert 'external' in page.locator('#system-status').inner_text()
+  assert '79862723087324' in page.locator('#configured-profile-status').inner_text()
+  assert 'not detected' in page.locator('#configured-profile-status').inner_text()
+  assert 'Not identified' in page.locator('#game-profile-status').inner_text()
+  assert '79862723087324' not in page.locator('#game-profile-status').inner_text()
+  assert page.locator('#process-status').inner_text()=='Roblox detected: Yes'
+  assert page.locator('#api-status').inner_text()=='Player data: Not connected'
+  assert page.locator('#esp-status').inner_text()=='ESP: Inactive'
+  assert 'roblox-local-data: unavailable' in page.locator('#integration-status').inner_text()
   assert page.locator('#player-visualization').is_hidden()
   assert page.locator('#radar-map').is_hidden()
   assert '0 connected' in page.locator('#player-count').inner_text()

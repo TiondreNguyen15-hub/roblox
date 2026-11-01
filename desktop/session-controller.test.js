@@ -12,9 +12,9 @@ async function test(){
  await c.launch(profiles);assert.equal(starts,0);assert.equal(events.at(-1).state,'waiting-game');
  c.process({running:true});assert.equal(starts,1);
  await c.launch(profiles);assert.equal(starts,1,'duplicate launch must not duplicate API polling');
- callback({type:'data',packet:packet()});assert.equal(events.at(-2).state,'connected');assert.equal(events.at(-1).type,'data');assert.equal(c.active.id,'one');
+ callback({type:'data',packet:packet()});assert.equal(events.at(-2).state,'connected');assert.equal(events.at(-1).type,'data');assert.equal(c.active.id,'one');assert.equal(c.detectedGame.placeId,79862723087324);assert.equal(c.playerDataConnected,true);
  callback({type:'data',packet:packet(123,'two')});assert.equal(c.active.id,'two');assert.ok(events.some(e=>e.type==='unload'));
- callback({type:'data',packet:packet(999)});assert.equal(events.at(-1).state,'unsupported');assert.equal(c.active,null);
+ callback({type:'data',packet:packet(999)});assert.equal(events.at(-1).state,'unsupported');assert.equal(c.active,null);assert.equal(c.detectedGame.placeId,999);assert.equal(c.playerDataConnected,false);
  callback({type:'status',message:'API unavailable',retrying:true});assert.equal(events.at(-1).state,'reconnecting');
  callback({type:'data',packet:packet()});assert.equal(c.active.id,'one');
  const stale=callback;c.process({running:false});assert.equal(c.active,null);assert.equal(c.polling,false);assert.equal(events.at(-1).state,'waiting-game');

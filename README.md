@@ -1,3 +1,5 @@
+[Current Roblox detection investigation and exact integration requirements](desktop/DETECTION-REPORT.md). The UI distinguishes configured targets, process presence, game identity, data connection, and ESP state.
+
 ## Current desktop: local backend edition
 
 The latest desktop removes relay URLs and pairing controls and uses private Electron IPC. ESP/Aimbot tabs and real LAUNCH/STOP are retained. Published Roblox has no supported local player-data API: the app reports **integration required** and does not display fabricated live data. [Download Windows app](downloads/Blue-Menu-Windows.exe) · [Current guide](desktop/README.md). Older external integration source below is retained but is not used by this build.

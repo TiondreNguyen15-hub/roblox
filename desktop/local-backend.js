@@ -8,10 +8,16 @@ const robloxAdapter={
 class LocalBackend{
  constructor(adapter=robloxAdapter){this.adapter=adapter;this.connection={transport:'private-electron-ipc'};this.generation=0;this.controller=null;this.dispose=null;}
  async restore(){return {transport:'private-electron-ipc'};}
+ inventory(){return [
+  {id:'roblox-process',available:true,description:'Windows process monitor: process presence only; no Place ID or player data.'},
+  {id:'roblox-local-data',available:false,description:'No supported local Roblox identity/player-data connector is implemented. The bundled adapter performs a capability check only.'},
+  {id:'external-game-bridge',available:false,description:'Optional game-side/relay source exists outside the desktop package. ExportConfig is disabled by default; the desktop remote consumer was removed. Developer authorization, published scripts, and a secure authorized transport plus desktop adapter are required.'}
+ ];}
  start(send,profiles=[]){
   this.stop();const generation=this.generation;this.controller=new AbortController();
   const signal=this.controller.signal;
   const emit=event=>{if(generation===this.generation&&!signal.aborted)send(event);};
+  emit({type:'diagnostics',integrations:this.inventory()});
   Promise.resolve().then(()=>{
    if(signal.aborted)return null;
    return this.adapter.start({signal,profiles,emit});
