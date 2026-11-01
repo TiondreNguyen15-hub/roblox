@@ -13,7 +13,8 @@
     "productName": "Blue Menu",
     "files": [
       "main.js",
-      "index.html"
+      "index.html",
+      "preload.js"
     ],
     "directories": {
       "output": "dist"
