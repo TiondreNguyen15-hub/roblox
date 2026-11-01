@@ -1,6 +1,6 @@
 # Blue Menu — local backend edition
 
-A two-tab ESP/Aimbot Windows interface with black/blue styling, game profiles, LAUNCH/STOP lifecycle control, and a private local backend. The desktop no longer has HTTPS relay URLs, pairing codes, Pair/Forget buttons, credential restoration, remote HTTP polling, or remote-server configuration screens.
+An ESP/Aimbot Windows interface with a Lua Scripts section with black/blue styling, game profiles, LAUNCH/STOP lifecycle control, and a private local backend. The desktop no longer has HTTPS relay URLs, pairing codes, Pair/Forget buttons, credential restoration, remote HTTP polling, or remote-server configuration screens.
 
 ## Important Roblox limitation
 
@@ -62,3 +62,7 @@ Tests passed on Linux. Native Windows startup/process querying and an actual Rob
 See [the source-level detection report](DETECTION-REPORT.md). The connection area now separates the configured target from process detection, observed game identity, authorized data connectivity, and ESP activity. LAUNCH reports bundled integration capabilities; no local Place ID/player-data connector is claimed.
 
 Backend diagnostic codes now distinguish process-query failures, missing identity/data connectors, adapter startup exceptions, invalid data, and unsupported profiles. Repeated LAUNCH preserves the precise failure; stable automatic states are deduplicated. The default local backend is a running private IPC component, not a running Roblox API. See DETECTION-REPORT.md for the exact native call path and responsible files.
+
+## Lua Script Input
+
+[Lua editor, sandbox, library, and compatibility guide](LUA-EDITOR.md). Run/Stop executes real local Lua 5.3 in an isolated process; it does not execute Roblox/Luau APIs inside Studio or a live game. The editor adds one pinned production dependency, Fengari, while retaining the private local backend.

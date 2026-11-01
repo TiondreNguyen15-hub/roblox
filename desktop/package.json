@@ -7,7 +7,7 @@
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
-    "test": "node session-controller.test.js && node target-selection.test.js && node local-backend.test.js && node game-process.test.js",
+    "test": "node session-controller.test.js && node target-selection.test.js && node local-backend.test.js && node game-process.test.js && node script-service.test.js",
     "test:session": "node session-controller.test.js"
   },
   "build": {
@@ -25,7 +25,11 @@
       "game-process.js",
       "session-controller.js",
       "target-selection.js",
-      "visualization.js"
+      "visualization.js",
+      "script-service.js",
+      "lua-runner.js",
+      "lua-highlight.js",
+      "lua-editor.js"
     ],
     "directories": {
       "output": "dist"
@@ -43,10 +47,17 @@
     },
     "electronLanguages": [
       "en-US"
+    ],
+    "asarUnpack": [
+      "lua-runner.js",
+      "node_modules/**"
     ]
   },
   "devDependencies": {
     "electron": "40.10.6",
     "electron-builder": "26.18.0"
+  },
+  "dependencies": {
+    "fengari": "0.1.5"
   }
 }

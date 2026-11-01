@@ -10,7 +10,7 @@
    this.animation=requestAnimationFrame(t=>this.frame(t));if(time-this.lastDraw<1000/30)return;this.lastDraw=time;
    const packet=this.packet,settings=this.settings(),target=TargetSelection.select(packet,settings.aim);
    document.getElementById('target-status').textContent=!settings.aim.enabled?'Target selection disabled':target?`${target.player.displayName} (@${target.player.username}) · ${Math.round(target.distance)} studs · HP ${Math.round(target.player.health)}/${Math.round(target.player.maxHealth)}`:'No eligible target inside the selection circle';
-   if(this.tab()==='esp'){this.drawPlayers(packet,settings);this.drawMap(packet,settings);}else this.drawAim(packet,settings,target);
+   if(this.tab()==='esp'){this.drawPlayers(packet,settings);this.drawMap(packet,settings);}else if(this.tab()==='aim')this.drawAim(packet,settings,target);
   }
   prepare(id,packet){const canvas=document.getElementById(id);canvas.hidden=false;canvas.width=Math.min(1200,packet.camera.viewport[0]);canvas.height=Math.max(1,Math.round(canvas.width*packet.camera.viewport[1]/packet.camera.viewport[0]));const context=canvas.getContext('2d'),backingScale=canvas.width/packet.camera.viewport[0],scale=(canvas.clientWidth||canvas.width)/packet.camera.viewport[0];context.scale(backingScale,backingScale);context.strokeStyle=this.settings().color;context.fillStyle='#b6d7ff';context.lineWidth=2/scale;context.font=`${12/scale}px Segoe UI`;return {context,scale};}
   drawPlayers(packet,s){

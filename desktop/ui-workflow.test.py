@@ -36,7 +36,7 @@ try:
   window.system={launch:profiles=>testNative({action:'launch',profiles}).then(deliver),stop:()=>testNative({action:'stop'}).then(deliver),configure:profiles=>testNative({action:'configure',profiles}).then(deliver),onEvent:f=>listeners.push(f)};
   window.gameProcess={onStatus:f=>window.processStatus=f};''')
   page.goto('http://127.0.0.1:8765')
-  assert page.get_by_role('tab').count()==2
+  assert page.get_by_role('tab').count()==3
   assert page.locator('video').count()==0
   assert page.locator('#player-visualization').is_hidden()
   page.get_by_role('button',name='LAUNCH',exact=True).click()
@@ -90,6 +90,6 @@ try:
    assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'),width
   assert not errors,errors
   browser.close()
-  print('PASS: two-tab UI + actual backend controller: LAUNCH, detect, profile/data init, ESP/radar, target enable/disable, API failure/recovery, unsupported game, switch/rejoin, exit/reopen, STOP, late data rejection, responsive widths. Process/API data are fixtures; native/live verification remains pending.')
+  print('PASS: existing ESP/Aimbot plus Lua UI + actual backend controller: LAUNCH, detect, profile/data init, ESP/radar, target enable/disable, API failure/recovery, unsupported game, switch/rejoin, exit/reopen, STOP, late data rejection, responsive widths. Process/API data are fixtures; native/live verification remains pending.')
 finally:
  process.terminate();process.wait(timeout=5)

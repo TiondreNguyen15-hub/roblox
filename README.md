@@ -1,3 +1,5 @@
+[Lua Script Input guide](desktop/LUA-EDITOR.md): highlighting, file save/load, script library, and isolated local Lua 5.3 Run/Stop. No Studio/client injection or Roblox API execution.
+
 [Current Roblox detection investigation and exact integration requirements](desktop/DETECTION-REPORT.md). The UI distinguishes configured targets, process presence, game identity, data connection, and ESP state.
 
 ## Current desktop: local backend edition

@@ -26,7 +26,7 @@ try:
   page.expose_binding('nativeCommand',lambda source,value:command(value))
   page.add_init_script('''window.listeners=[];window.deliver=events=>events.forEach(e=>listeners.forEach(f=>f(e)));window.system={launch:profiles=>nativeCommand({action:'launch',profiles}).then(deliver),stop:()=>nativeCommand({action:'stop'}).then(deliver),configure:profiles=>nativeCommand({action:'configure',profiles}).then(deliver),onEvent:f=>listeners.push(f)};window.gameProcess={onStatus:f=>window.processStatus=f};''')
   page.goto('http://127.0.0.1:8765')
-  assert page.get_by_role('tab').count()==2
+  assert page.get_by_role('tab').count()==3
   assert page.locator('input[type=url]').count()==0
   for id in ['api-url','api-code','api-pair','api-forget']:assert page.locator('#'+id).count()==0
   page.get_by_role('button',name='LAUNCH',exact=True).click()
