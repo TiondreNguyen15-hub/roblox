@@ -9,7 +9,7 @@ async function run(){
  controller.process({running:true});await turn();
  assert.equal(events.at(-1).state,'integration-required');assert.equal(controller.active,null);
  assert.equal(events.filter(e=>e.type==='data').length,0,'built-in Roblox adapter must never invent data');
- assert.ok(events.at(-1).message.includes('external'));controller.stop();assert.equal(events.at(-1).state,'idle');
+ assert.ok(events.at(-1).message.includes('external'));assert.equal(events.at(-1).code,'ROBLOX_DATA_CONNECTOR_MISSING');assert.equal(events.at(-1).retryable,false);assert.equal(events.at(-1).missing.length,3);assert.equal(backend.health().playerDataConnectorImplemented,false);const failure=events.at(-1);await controller.launch(profiles);assert.deepEqual(events.at(-1),failure,'Repeated LAUNCH must retain the precise failure');const count=events.length;controller.process({running:true});await turn();assert.equal(events.length,count,'Stable process updates must not repeat initialization/errors');controller.stop();assert.equal(events.at(-1).state,'idle');
  controller.process({running:true});await turn();assert.equal(events.at(-1).state,'idle','STOP must disarm auto-start');
  let aborted=false,disposed=0,resolveStart,send;
  const testBackend=new Backend({start:({signal,emit})=>{send=emit;signal.addEventListener('abort',()=>{aborted=true});return new Promise(resolve=>{resolveStart=resolve});}});

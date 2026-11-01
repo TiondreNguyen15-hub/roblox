@@ -7,7 +7,7 @@
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
-    "test": "node session-controller.test.js && node target-selection.test.js && node local-backend.test.js",
+    "test": "node session-controller.test.js && node target-selection.test.js && node local-backend.test.js && node game-process.test.js",
     "test:session": "node session-controller.test.js"
   },
   "build": {

@@ -51,3 +51,30 @@ A live Roblox server cannot directly publish to the player's localhost. Private 
 ## Verification boundary
 
 Backend lifecycle/target-selection/local capability tests and browser tests pass with explicit process/data test adapters. The local-backend UI test uses the actual built-in adapter and no player fixtures: it verifies that a running process plus configured Place ID never becomes game identified or ESP active. Native Windows process querying, any deployed relay, your published scripts, and real player data were not accessed or verified in this environment.
+
+## Follow-up backend audit: repeated generic messages
+
+The native path is `ui.js → preload.js system:launch → main.js IPC handler → SessionController.launch/startIfReady → LocalBackend.start → robloxAdapter.start`. That path is wired and reaches the adapter. The adapter has only a capability diagnostic; it performs no experience lookup or player-data request. Its `connection = {transport: 'private-electron-ipc'}` is an internal adapter marker, not evidence of a running Roblox API. There is no localhost HTTP/WebSocket listener or separate Roblox data service in the desktop package. The Electron backend itself is real and running when it delivers IPC diagnostics; it cannot create the missing game-data source.
+
+Responsible files:
+
+- `game-process.js`: Windows PowerShell count query every three seconds; no experience ID extraction.
+- `game-profiles.js`: configured target from a default/localStorage, never a source of observed identity.
+- `main.js` / `preload.js`: trusted main-frame LAUNCH/STOP/configuration IPC wiring; no data-consumer IPC or external request path exists.
+- `local-backend.js`: default adapter is a capability check only; optional bridge source is not an installed native integration.
+- `session-controller.js`: coordinates lifecycle and validates future adapter packets. Its previous already-armed branch replaced precise failures with a generic message.
+- `ui.js`: status rendering. It now shows backend error codes without changing layout.
+- `game-tracker/server/ExportConfig.lua`: optional publisher disabled, URL empty in this checkout. Actual published configuration is unknown.
+
+Backend fixes in this audit:
+
+1. `ROBLOX_DATA_CONNECTOR_MISSING` is non-retryable and includes explicit missing components. Repeated LAUNCH preserves this result instead of changing to “already armed.” Stable automatic states are deduplicated.
+2. Windows process diagnostics distinguish unsupported OS, missing PowerShell, spawn failure, query timeout, unsuccessful exit, malformed output, process absent, and process found. Exit/close handling waits for output to finish and does not treat a failed query as an affirmative count. STOP clears query timers and suppresses late completions.
+3. Backend diagnostics distinguish the implemented/running private IPC path from an unimplemented Roblox identity/player-data API. Adapter startup exceptions receive `LOCAL_ADAPTER_START_FAILED`; invalid packets receive `PLAYER_DATA_SCHEMA_INVALID`; unmatched real IDs receive `PLACE_PROFILE_MISMATCH`.
+4. No missing connector was replaced with simulated data or an undocumented extraction method. Nothing in these fixes implements Roblox experience identification or player-data access.
+
+Validation includes injected child-process cases, repeated-LAUNCH preservation, stable-state deduplication, cancellation/late events, and browser tests connected to the real backend controller. Native Windows behavior and the user's live Roblox environment were not accessed. Developer-authorized game scripts plus a supported transport and desktop consumer remain prerequisites for actual game data. The previous remote system was removed at the user's request; this audit does not silently restore it.
+
+### Updating the portable app
+
+Fully exit an older running Blue Menu before opening the new executable. The single-instance lock intentionally focuses an already-running app instead of replacing its loaded code. The diagnostic build displays `[ROBLOX_DATA_CONNECTOR_MISSING]` for the missing connector; the code helps distinguish it from an older generic-message build. This is an update check, not evidence that an older process is the cause on your computer.

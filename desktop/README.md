@@ -60,3 +60,5 @@ Tests passed on Linux. Native Windows startup/process querying and an actual Rob
 ## Detection troubleshooting
 
 See [the source-level detection report](DETECTION-REPORT.md). The connection area now separates the configured target from process detection, observed game identity, authorized data connectivity, and ESP activity. LAUNCH reports bundled integration capabilities; no local Place ID/player-data connector is claimed.
+
+Backend diagnostic codes now distinguish process-query failures, missing identity/data connectors, adapter startup exceptions, invalid data, and unsupported profiles. Repeated LAUNCH preserves the precise failure; stable automatic states are deduplicated. The default local backend is a running private IPC component, not a running Roblox API. See DETECTION-REPORT.md for the exact native call path and responsible files.

@@ -34,6 +34,11 @@ try:
   page.evaluate("async()=>{processStatus({running:true});deliver(await nativeCommand({action:'process',running:true}));}")
   page.wait_for_function("()=>document.getElementById('state-badge').textContent==='INTEGRATION-REQUIRED'")
   assert 'external' in page.locator('#system-status').inner_text()
+  assert '[ROBLOX_DATA_CONNECTOR_MISSING]' in page.locator('#system-status').inner_text()
+  assert 'Local IPC backend: running; Roblox data API: not implemented' in page.locator('#integration-status').inner_text()
+  original=page.locator('#system-status').inner_text()
+  page.evaluate('async()=>deliver(await nativeCommand({action:"launch",profiles:GameProfiles.profiles}))')
+  assert page.locator('#system-status').inner_text()==original
   assert '79862723087324' in page.locator('#configured-profile-status').inner_text()
   assert 'not detected' in page.locator('#configured-profile-status').inner_text()
   assert 'Not identified' in page.locator('#game-profile-status').inner_text()
