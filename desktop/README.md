@@ -24,3 +24,5 @@ npm run build -- --win --x64
 Output: `dist/Blue Menu 1.0.0.exe`.
 
 The interface was checked in Chromium for Play, Credits, Back, Escape, saved settings, and a narrow window. Windows executable startup must be verified on Windows.
+
+ESP and Aim are visual menu sections with a local preview only. ESP includes boxes, names, and distance toggles. Aim includes crosshair and circle toggles plus a circle size slider. Preview preferences are saved locally.

@@ -13,21 +13,37 @@ main{width:min(100%,400px);background:#0d141f;border:1px solid #22364e;border-ra
 header{text-align:center}h1{font-size:29px;letter-spacing:2px;margin:0 0 10px}p{color:#91a4be;font-size:14px;line-height:1.7;margin:0 0 28px}.eyebrow{font-size:10px;letter-spacing:3px;color:#6091c4;text-align:center;margin:28px 0 0}
 button{font:600 14px Segoe UI,Arial,sans-serif;color:#f4f8ff;width:100%;padding:18px;border:1px solid #26394f;border-radius:15px;background:#172337;cursor:pointer;transition:background .16s,transform .16s,box-shadow .16s;margin:0 0 12px;letter-spacing:1px}
 button:hover{background:#22354e;transform:translateY(-2px)}button:focus-visible,input:focus-visible{outline:3px solid #98c9ff;outline-offset:4px}button.primary{background:var(--blue);border-color:var(--blue);box-shadow:0 8px 25px var(--glow)}button.primary:hover{filter:brightness(1.12)}button:last-child{margin-bottom:0}[hidden]{display:none!important}.detail{min-height:110px;text-align:center;padding:12px 0}.setting{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:20px 0 34px;color:#c4d2e5;font-size:14px}input{accent-color:var(--blue);width:22px;height:22px;cursor:pointer}.status{display:inline-block;color:#71b2ff;background:#102944;border:1px solid #244e78;border-radius:30px;padding:7px 13px;font-size:11px;letter-spacing:1px;margin-bottom:22px}
+.demo-note{text-align:center;margin:0 0 14px;color:#71b2ff;font-size:12px}.preview{height:170px;position:relative;display:grid;place-items:center;background:#090f19;border:1px solid #22364e;border-radius:16px;margin-bottom:12px;overflow:hidden}.option{display:flex;justify-content:space-between;align-items:center;min-height:44px;color:#c4d2e5;font-size:14px;gap:12px}.option input{flex-shrink:0}section>.primary{margin-top:16px}#target{height:95px;width:60px;border:2px solid #2788ff;position:relative;background:#2788ff12}#target-name,#target-distance{position:absolute;left:50%;transform:translateX(-50%);font-size:10px;white-space:nowrap;color:#8ac0ff}#target-name{top:-20px}#target-distance{bottom:-20px}#aim-circle{width:100px;height:100px;border:1px solid #2788ff;border-radius:50%;position:absolute}#crosshair{font-size:30px;color:#85bdff;font-weight:300;line-height:1}#circle-size{width:100%;height:24px;margin:0 0 16px}output{color:#71b2ff}
 @keyframes enter{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}body.reduced *{animation:none!important;transition:none!important}
 </style>
 </head>
 <body>
 <main>
 <header><div class="mark" aria-hidden="true">◇</div><h1 id="title">BLUE MENU</h1><p id="subtitle">Ready when you are.</p></header>
-<section id="home" aria-label="Main menu"><button class="primary" data-view="play">PLAY &nbsp; →</button><button data-view="settings">SETTINGS</button><button data-view="credits">CREDITS</button></section>
+<section id="home" aria-label="Main menu"><button class="primary" data-view="play">PLAY &nbsp; →</button><button data-view="esp">ESP</button><button data-view="aim">AIM</button><button data-view="settings">SETTINGS</button><button data-view="credits">CREDITS</button></section>
 <section id="play" hidden aria-label="Welcome"><div class="detail"><span class="status">YOU’RE IN</span><p>Welcome to your desktop menu.<br>Connect your game to this screen when it’s ready.</p></div><button class="primary" data-view="home">BACK TO MENU</button></section>
 <section id="settings" hidden aria-label="Settings"><label class="setting" for="motion">Reduce animations<input id="motion" type="checkbox"></label><p>Your preference is saved on this computer.</p><button class="primary" data-view="home">BACK</button></section>
+<section id="esp" hidden aria-label="ESP">
+<p class="demo-note">Visual preview</p>
+<div class="preview" aria-label="ESP preview"><div id="target"><span id="target-name">PLAYER</span><span id="target-distance">24 m</span></div></div>
+<label class="option">Boxes<input id="boxes" type="checkbox" checked></label>
+<label class="option">Names<input id="names" type="checkbox" checked></label>
+<label class="option">Distance<input id="distance" type="checkbox" checked></label>
+<button class="primary" data-view="home">BACK</button></section>
+<section id="aim" hidden aria-label="Aim">
+<p class="demo-note">Visual preview</p>
+<div class="preview" aria-label="Aim preview"><div id="aim-circle"></div><span id="crosshair">+</span></div>
+<label class="option">Crosshair<input id="crosshair-toggle" type="checkbox" checked></label>
+<label class="option">Show circle<input id="circle-toggle" type="checkbox" checked></label>
+<label class="option" for="circle-size">Circle size <output id="size-value">100 px</output></label>
+<input id="circle-size" type="range" min="40" max="140" value="100" aria-label="Circle size">
+<button class="primary" data-view="home">BACK</button></section>
 <section id="credits" hidden aria-label="Credits"><div class="detail"><p>Blue Menu<br>A black and blue desktop experience.<br>Built with Electron.</p></div><button class="primary" data-view="home">BACK</button></section>
 <footer class="eyebrow">YOUR NEXT ADVENTURE</footer>
 </main>
 <script>
-const views=['home','play','settings','credits'];
-const headings={home:['BLUE MENU','Ready when you are.'],play:['WELCOME','Your next adventure starts here.'],settings:['SETTINGS','Make yourself comfortable.'],credits:['CREDITS','Thanks for stopping by.']};
+const views=['home','play','settings','credits','esp','aim'];
+const headings={esp:['ESP','Customize your visual preview.'],aim:['AIM','Customize your crosshair preview.'],home:['BLUE MENU','Ready when you are.'],play:['WELCOME','Your next adventure starts here.'],settings:['SETTINGS','Make yourself comfortable.'],credits:['CREDITS','Thanks for stopping by.']};
 function show(name){
   for(const id of views)document.getElementById(id).hidden=id!==name;
   document.getElementById('title').textContent=headings[name][0];
@@ -39,7 +55,24 @@ const motion=document.getElementById('motion');
 try{motion.checked=localStorage.getItem('reduceMotion')==='true';}catch{}
 document.body.classList.toggle('reduced',motion.checked);
 motion.addEventListener('change',()=>{document.body.classList.toggle('reduced',motion.checked);try{localStorage.setItem('reduceMotion',String(motion.checked));}catch{}});
-document.addEventListener('keydown',event=>{if(event.key==='Escape')show('home');});
+function updatePreview(){
+ document.getElementById('target').style.borderColor=document.getElementById('boxes').checked?'#2788ff':'transparent';
+ document.getElementById('target-name').hidden=!document.getElementById('names').checked;
+ document.getElementById('target-distance').hidden=!document.getElementById('distance').checked;
+ document.getElementById('crosshair').hidden=!document.getElementById('crosshair-toggle').checked;
+ const circle=document.getElementById('aim-circle');
+ circle.hidden=!document.getElementById('circle-toggle').checked;
+ const size=document.getElementById('circle-size').value;
+ circle.style.width=circle.style.height=size+'px';
+ document.getElementById('size-value').textContent=size+' px';
+}
+for(const id of ['boxes','names','distance','crosshair-toggle','circle-toggle','circle-size']){
+ const input=document.getElementById(id);
+ try{const saved=localStorage.getItem('preview-'+id);if(saved!==null){if(input.type==='checkbox')input.checked=saved==='true';else input.value=saved;}}catch{}
+ input.addEventListener('input',()=>{updatePreview();try{localStorage.setItem('preview-'+id,input.type==='checkbox'?String(input.checked):input.value);}catch{}});
+}
+updatePreview();
+document.addEventListener('keydown' ,event=>{if(event.key==='Escape')show('home');});
 </script>
 </body>
 </html>
